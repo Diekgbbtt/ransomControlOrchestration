@@ -1,0 +1,65 @@
+{
+    "dpx_engines" : {
+        "source_engines": {
+
+            "data_1": {
+                "host": "172.16.180.1",
+                "apiVersion" : "1.11.25",
+                "usr" : "admin",
+                "pwd" : "Delphix1."
+            }
+        },
+
+        "vault_engines": {
+            "data_13": {
+                "host": "172.16.180.13",
+                "apiVersion" : "1.11.25",
+                "usr" : "admin",
+                "pwd" : "delphix"
+            }
+
+        },
+        "discovery_engines": {
+            "compl_13" : {
+                "host": "172.16.180.13",
+                "usr" : "admin",
+                "pwd" : "Admin-12"
+            }
+        }
+    },
+
+    "vdbs_control" : {
+    
+       "control1" : {
+            "host": "172.16.180.5",
+            "port": 21521,
+            "sid": "DGP",
+            "usr" : "delphixdev",
+            "pwd" : "delphix"
+       }
+    },
+
+    "mail": {
+        "smtpServer":"outlook.office365.com",
+        "usr":"d.gobbetti@nsr.it",
+        "pwd":"erevre"
+    },
+
+
+    "Replications": [
+        { 
+            "ID" : 1,
+            "sourceEngineRef" : "data_1",
+            "vaultEngineRef" : "data_13",
+            "discEngineRef" : "compl_13",
+            "vdbRef" : "control1",
+            "replicationSpec": "REPLICATION_SPEC-8",
+            "vdbContainerRef": "ORACLE_DB_CONTAINER-247",
+            "dSourceContainer_ref": "ORACLE_DB_CONTAINER-239",
+            "jobId": 21,
+            "mailReceivers": [
+                "diegogobbetti111@gmail.com"
+            ]
+        }
+    ]
+}
