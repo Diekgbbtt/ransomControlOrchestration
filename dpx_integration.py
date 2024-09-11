@@ -1,20 +1,39 @@
-# import time - possible with time to get current date_time and parse data
+""""
+author : diego gobbetti
+version : 0.0.1
+email : d.gobbetti@nsr.it
+"""
+
+"""
+TO DO:
+    -   handle worst case scenarios
+        -   valutare dimensione report e chuking se supera limite (dimensione email - x MB) -> invio di più mail, con ogni mail che indichi solo discrepanza rilevata alla tabella x colonna y
+        -  creare livello persistente semplice con sqlLite che fornisca un log dei report e il loro stato di invio, in modo tale che se la mail non venga inviata, si può agire manualemente
+    -   
+        
+"""
+
+
+
+# third party modules
 import requests
-# import subprocess - for future parallel support
 import smtplib
+import oracledb
+from email.message import EmailMessage
+# import subprocess - for future parallel support
+
+# standard library modules
 import urllib3
 import json
 import os
-
+import math
 import threading
-
 from chardet import detect
 from dateutil import parser
 from datetime import datetime
-from email.message import EmailMessage
-import oracledb
 import zipfile
-# It is the renamed, new major release of the popular cx_Oracle driver.
+from typing import List
+import sqlite3
 
 
 
@@ -156,26 +175,6 @@ d. The actual_space property retrieves the value of actualSpace from the breakdo
 e. The ingested_size property retrieves the value of ingestedSize from the breakdown attribute. #
 """
 
-class Breakdown(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Runtime(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Sourcingpolicy(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class SourceConfig(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
 class Source(ApiObject):
     def __init__(self, dictionary):
         super().__init__(dictionary)
@@ -192,60 +191,6 @@ class Source(ApiObject):
             db_type = "VDB"
         return db_type
 
-
-class Operations(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Ingestionstrategy(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Configparams(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Runtimemountinformation(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Parameters(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Preprovisioningstatus(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Sourceappspassword(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Sourcewlspassword(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Services(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Appspassword(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-
-class Wlspassword(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
 
 
 class Repository(ApiObject):
@@ -275,19 +220,18 @@ def main():
     
     
 
-    for rep in cfg_dict.get('Replications'):
 
-       
+    for rep in cfg_dict.get('Replications'):
     
         """
         engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
         engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
-        engine_1.loginData(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
+        engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
         engine_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['host'])
         engine_13.create_session(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['apiVersion'])
-        engine_13.loginData(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['pwd'])
+        engine_13.login_data(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['pwd'])
         engineCompl_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['host'])
-        engineCompl_13.loginCompliance(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['pwd'])
+        engineCompl_13.login_compliance(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['pwd'])
 
         engine_1.replication(rep['replicationSpec'])
         engine_13.refresh(rep['vdbContainerRef'], rep['dSourceContainer_ref'])
@@ -296,55 +240,129 @@ def main():
         engineCompl_13.mask(rep['jobId'])
 
         # discrepantValues = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
-
         """
+        
         # if(discrepantValues):
         
-        reportPath = createReport() # zip the new discrepancies file
-        sendAlert(cfg_dict.get('mail')['smtpServer'], cfg_dict.get('mail')['usr'], cfg_dict.get('mail')['pwd'], reportPath, cfg_dict.get('mail')['usr'], rep['mailReceivers'])
+        register_reports()
+        reports_zip_path = create_report() # zip the new discrepancies file
+        
+        send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'])
+        backup_report(reports_zip_path)
 
+        """
+        in corrispondenza di un attacco ransomware, invio il singolo report creato all'attuale esecuzione zippato. che poi viene backuppato in un db.
+        parallelamente in una base di dati(sqllite) viene tenuto traccia dello stato del processo di invio del report, per gestire manualmente il processo di invio del report in caso di malfunzionamento.
+        """
 
-def createReport():
-    # reportPath=(f"Evaluation/discrepancies{(datetime.now()).strftime("%d_%m_%Y-%H_%M_%S")}.txt") #.replace(" ", "_").replace(":", "_")
-    
-    test_file_path = "Evaluation\discrepancies_email_test" + (datetime.now()).strftime('%d_%m_%Y-%H_%M_%S') + ".txt"
+def create_report():
+    # report_path=(f"Evaluation/discrepancies{(datetime.now()).strftime("%d_%m_%Y-%H_%M_%S")}.txt") #.replace(" ", "_").replace(":", "_")
+    os.chdir("Evaluation") 
+    test_file_path = "discrepancies_email_test" + (datetime.now()).strftime('%d_%m_%Y-%H_%M_%S') + ".txt"
     flags = os.O_CREAT | os.O_WRONLY  # Create file if it doesn't exist, open for writing
     mode = 0o666  # Permissions for the file
     fd = os.open(test_file_path, flags, mode)
     os.write(fd, b"TEST - discrepancies test")
     os.close(fd)
-    # reportPath = "Evaluation\discrepancies_email_test.txt"
+    # report_path = "Evaluation\discrepancies_email_test.txt"
     """
     for row in discrepantValues:
-        with open(reportPath, "w") as report:
+        with open(report_path, "w") as report:
             report.write(rf"descrepancy revealed in database {row[0]} table {row[1]} column {row[2]}. Value {row[3]} has {row[4] if row[4] is not None else 0} occurrences while the expected occurrences are {row[5]}")
     """
-    return zipReport(test_file_path)
+    return zip_report(test_file_path)
 
-def zipReport(reportPath):
-    zipPath = reportPath.replace(".txt", ".zip")
-    with zipfile.ZipFile(zipPath, "x") as zip:
-        zip.write(reportPath, compresslevel=9)
-    os.remove(reportPath)
-    return zipPath
+def zip_report(report_path):
+    zip_path = report_path.replace(".txt", ".zip")
+    with zipfile.ZipFile(zip_path, "x") as zip:
+        zip.write(report_path, compresslevel=9)
+    os.remove(report_path)
+    update_report_status("")
+    return asses_dimensions(zip_path=zip_path)
 
-def sendAlert(domain, username, pwd, filePath, sender, receivers):
+
+def asses_dimensions(zip_path: str):
+     # Constants
+    CHUNK_SIZE = 150 * 1024 * 1024  # 150MB in bytes
+    MAX_SIZE = 300 * 1024 * 1024  # 300MB in bytes
+    
+    # Check the size of the file
+    file_size = os.path.getsize(zip_path)
+    
+    # If file is smaller than or equal to 300MB, no need to chunk
+    if file_size <= MAX_SIZE:
+        return [zip_path]  # Return original file path
+    
+    # Split into chunks if file is larger than 300MB
+    file_parts = []
+    with open(zip_path, 'rb') as f:
+        total_parts = math.ceil(file_size / CHUNK_SIZE)
+        base_name, ext = os.path.splitext(zip_path)
+        
+        for i in range(total_parts):
+            part_file_path = f"{base_name}_part_{i + 1}{ext}"
+            with open(part_file_path, 'wb') as chunk_file:
+                chunk_data = f.read(CHUNK_SIZE)
+                if chunk_data:
+                    print(chunk_data)
+                    chunk_file.write(chunk_data)
+                    file_parts.append(part_file_path)
+    return file_parts
+
+
+def update_report_status(status: str) -> None:
+    conn = sqlite3.connect('reports.db')
+    cursor = conn.cursor()
+
+
+def register_reports() -> None:
+    
+    conn = sqlite3.connect('reports.db')
+    cursor = conn.cursor()
+    
+    report_name = "discrepancies_email_test_" + datetime.now().strftime('%d_%m_%Y-%H_%M_%S') + ".zip"
+    processing_status = "TO GENERATE"
+
+    # Create the reports table if it doesn't exist
+    cursor.execute('''
+    INSERT INTO reports (report_name, processing_status, creation_timestamp, data)
+    VALUES (:report_name, :processing_status, :creation_timestamp, :data)
+    ''', {
+        'report_name': report_name,
+        'processing_status': processing_status,
+        'creation_timestamp': None,
+        'data': None
+    })
+    conn.commit()
+    conn.close()
+
+    return
+
+
+def backup_report(reports_dir_path):
+
+
+   return
+
+
+def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: List[str]) -> None:
         """
         An SMTP instance encapsulates an SMTP connection. It has methods that support a full repertoire of SMTP and ESMTP operations. 
         If the optional host and port parameters are given, the SMTP connect() method is called with those parameters during initialization.
         """
-        with smtplib.SMTP(domain) as mailServer:
+        with smtplib.SMTP(domain) as mail_server:
         # https://docs.python.org/3/library/smtplib.html#smtplib.SMTP
-            mailServer.starttls()
-            mailServer.login(username, pwd)
-            content = addContent(filePath)
-            print(receivers)
-            mailServer.send_message(content, sender, receivers)
-        # mailServer.close()
+            mail_server.starttls()
+            mail_server.login(username, pwd)
+            for report in reports_path: 
+                content = add_content(report)
+                print(receivers)
+                mail_server.send_message(content, sender, receivers)
+        # mail_server.close()
         
         return
 
-def addContent(filePath):
+def add_content(report_attach: str) -> None:
         alert = EmailMessage()
         alert[""]=f"Ransomware attack detected : Start Fast Recovery"
         alert["Content-Type"]=f"text/plain" # multipart/mixed         
@@ -373,15 +391,9 @@ def addContent(filePath):
         # remove reports older than 7 days
         # loop on files in Evaluation directory
 
-        with open(filePath, 'rb' ) as zip_file: # encoding=get_encoding_type(filePath)
-            """
-            devo zipare tutta la directory evaluation. Nel momento della rilevazione di un attacco ransomware dovrei backuppare in un altra cartella zippata tutti i 
-            discrepancies zip file più vecchi di 7 giorni. In evaluation rimangono quindi solo i file con data < di 7 giorni, ciascun file tranne l'ultimo creato all'attuale
-            esecuzione sono zippati, quindi si zippa quest'ultimo e si zippa tutta Evaluation, si aggiunge alla mail con add_attachment e si cancella lo zip di Evaluation.
-            """
-
-            # os.chdir(path) - change dir to evaluation when adding zip files to the attachment
-            alert.add_attachment(zip_file.read(), maintype="application", subtype="zip", filename=filePath[11:])
+        with open(report_attach, 'rb' ) as zip_file: # encoding=get_encoding_type(file_path)
+            alert.add_attachment(zip_file.read(), maintype="application", subtype="zip", filename=report_attach[11:])
+        
         """
         If the message is a non-multipart, multipart/related, or multipart/alternative, call make_mixed() and then
         create a new message object, pass all of the arguments to its set_content() method, and attach() it to the multipart
@@ -402,12 +414,6 @@ def addContent(filePath):
             print(a.get_content())
 
         return alert
-
-def get_encoding_type(file):
-    with open(file, 'rb') as f:
-        rawdata = f.read()
-    return detect(rawdata)['encoding']
-
 
 
 def evaluate(db_hostname, db_port, username, pwd, sid):
@@ -537,7 +543,7 @@ class DelphixEngine:
         response = self._post(uri, data)
         return response.json()
 
-    def loginData(self, username, password):
+    def login_data(self, username, password):
         uri = r"resources/json/delphix/login"
         data = {
             'type': 'LoginRequest',
@@ -552,7 +558,7 @@ class DelphixEngine:
     come username, l'engine non capisce quale admin da LDAP prendere, è quindi necessario indicare un dominio di autenticazione.
     """
 
-    def loginCompliance(self, username, password):
+    def login_compliance(self, username, password):
         uri="masking/api/login"
         data = {
             'username' : username.strip(),
@@ -624,10 +630,10 @@ class DelphixEngine:
 
 
         uri_SourceState = r"resources/json/delphix/replication/sourcestate"
-        sourceStateList = self._get(uri_SourceState, key="result")
-        sourceState_rep = list(filter(lambda x: x['spec']==reference, sourceStateList)) # non filtra correttamente
-        sourceState_rep = [x for x in sourceStateList if x['spec']==reference]
-        sourceState_rep = self.filter_by_string(sourceStateList, reference, "spec")
+        source_state_list = self._get(uri_SourceState, key="result")
+        sourceState_rep = list(filter(lambda x: x['spec']==reference, source_state_list)) # non filtra correttamente
+        sourceState_rep = [x for x in source_state_list if x['spec']==reference]
+        sourceState_rep = self.filter_by_string(source_state_list, reference, "spec")
 
 
         # print(self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec"))
