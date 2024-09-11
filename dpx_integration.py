@@ -8,6 +8,7 @@ import os
 
 import threading
 
+from chardet import detect
 from dateutil import parser
 from datetime import datetime
 from email.message import EmailMessage
@@ -268,11 +269,17 @@ class Repository(ApiObject):
 
 def main():
 
+
     with open('config.json', 'r') as cfg:
         cfg_dict = json.load(cfg)
+    
+    
 
     for rep in cfg_dict.get('Replications'):
-        
+
+       
+    
+        """
         engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
         engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
         engine_1.loginData(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
@@ -288,20 +295,31 @@ def main():
 
         engineCompl_13.mask(rep['jobId'])
 
-        discrepantValues = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
+        # discrepantValues = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
 
+        """
+        # if(discrepantValues):
         
-        if(discrepantValues):
-            reportPath = createReport(discrepantValues)
-            sendAlert(cfg_dict.get('mail')['smtpServer'], cfg_dict.get('mail')['usr'], cfg_dict.get('mail')['pwd'], reportPath, cfg_dict.get('mail')['usr'], rep['mailReceivers'])
+        reportPath = createReport() # zip the new discrepancies file
+        sendAlert(cfg_dict.get('mail')['smtpServer'], cfg_dict.get('mail')['usr'], cfg_dict.get('mail')['pwd'], reportPath, cfg_dict.get('mail')['usr'], rep['mailReceivers'])
 
 
-def createReport(discrepantValues):
-    reportPath=(f"Evaluation/discrepancies{(datetime.now()).strftime("%d_%m_%Y-%H_%M_%S")}.txt") #.replace(" ", "_").replace(":", "_")
+def createReport():
+    # reportPath=(f"Evaluation/discrepancies{(datetime.now()).strftime("%d_%m_%Y-%H_%M_%S")}.txt") #.replace(" ", "_").replace(":", "_")
+    
+    test_file_path = "Evaluation\discrepancies_email_test" + (datetime.now()).strftime('%d_%m_%Y-%H_%M_%S') + ".txt"
+    flags = os.O_CREAT | os.O_WRONLY  # Create file if it doesn't exist, open for writing
+    mode = 0o666  # Permissions for the file
+    fd = os.open(test_file_path, flags, mode)
+    os.write(fd, b"TEST - discrepancies test")
+    os.close(fd)
+    # reportPath = "Evaluation\discrepancies_email_test.txt"
+    """
     for row in discrepantValues:
         with open(reportPath, "w") as report:
             report.write(rf"descrepancy revealed in database {row[0]} table {row[1]} column {row[2]}. Value {row[3]} has {row[4] if row[4] is not None else 0} occurrences while the expected occurrences are {row[5]}")
-    return zipReport(reportPath)
+    """
+    return zipReport(test_file_path)
 
 def zipReport(reportPath):
     zipPath = reportPath.replace(".txt", ".zip")
@@ -309,6 +327,88 @@ def zipReport(reportPath):
         zip.write(reportPath, compresslevel=9)
     os.remove(reportPath)
     return zipPath
+
+def sendAlert(domain, username, pwd, filePath, sender, receivers):
+        """
+        An SMTP instance encapsulates an SMTP connection. It has methods that support a full repertoire of SMTP and ESMTP operations. 
+        If the optional host and port parameters are given, the SMTP connect() method is called with those parameters during initialization.
+        """
+        with smtplib.SMTP(domain) as mailServer:
+        # https://docs.python.org/3/library/smtplib.html#smtplib.SMTP
+            mailServer.starttls()
+            mailServer.login(username, pwd)
+            content = addContent(filePath)
+            print(receivers)
+            mailServer.send_message(content, sender, receivers)
+        # mailServer.close()
+        
+        return
+
+def addContent(filePath):
+        alert = EmailMessage()
+        alert[""]=f"Ransomware attack detected : Start Fast Recovery"
+        alert["Content-Type"]=f"text/plain" # multipart/mixed         
+        alert.set_content("""
+            Dear Administrator,
+
+            Our system has detected a potential ransomware attack on the application.
+            Immediate action is required to prevent data loss and further damage.
+            
+            Detected at: -- aggiungi data in qualche modo
+            In the attacche document you can find further information regarding data discrepancies detected.                      
+            Please investigate the issue promptly and take necessary measures to mitigate the attack.
+            Start Fast delphix Recovery process of the affected Databases.
+
+            Best regards,
+                                
+            Ransomware Detection System
+                        """)
+        
+        """
+            'rb' stands for read bytes, data is read as raw bytes without applying encoding, hence special chars like newline are interpreted as they are, 
+            suitable for binary files like .jpg, .mp4, .exe
+            with 'r' Data is read as strings (decoded from the file's binary content into text using the default or specified encoding, typically UTF-8).
+            i.e. Line endings (\n in UNIX or \r\n in Windows) are translated to Python's universal newline character (\n).
+        """
+        # remove reports older than 7 days
+        # loop on files in Evaluation directory
+
+        with open(filePath, 'rb' ) as zip_file: # encoding=get_encoding_type(filePath)
+            """
+            devo zipare tutta la directory evaluation. Nel momento della rilevazione di un attacco ransomware dovrei backuppare in un altra cartella zippata tutti i 
+            discrepancies zip file più vecchi di 7 giorni. In evaluation rimangono quindi solo i file con data < di 7 giorni, ciascun file tranne l'ultimo creato all'attuale
+            esecuzione sono zippati, quindi si zippa quest'ultimo e si zippa tutta Evaluation, si aggiunge alla mail con add_attachment e si cancella lo zip di Evaluation.
+            """
+
+            # os.chdir(path) - change dir to evaluation when adding zip files to the attachment
+            alert.add_attachment(zip_file.read(), maintype="application", subtype="zip", filename=filePath[11:])
+        """
+        If the message is a non-multipart, multipart/related, or multipart/alternative, call make_mixed() and then
+        create a new message object, pass all of the arguments to its set_content() method, and attach() it to the multipart
+        """
+        # https://docs.python.org/3/library/email.message.html#email.message.EmailMessage.add_attachment
+
+        print(alert.is_multipart())
+        for part in alert.walk():
+            print(part.get_content_type())
+            print(part.get_body())
+
+        attachs = alert.iter_attachments()
+        for a in attachs:
+            print(' \n \n attachments: \n')
+            print(a.get_content_type())
+            print(a.get_content_disposition())
+            print(a.get_filename())
+            print(a.get_content())
+
+        return alert
+
+def get_encoding_type(file):
+    with open(file, 'rb') as f:
+        rawdata = f.read()
+    return detect(rawdata)['encoding']
+
+
 
 def evaluate(db_hostname, db_port, username, pwd, sid):
     
@@ -348,40 +448,7 @@ def evaluate(db_hostname, db_port, username, pwd, sid):
 
 
 
-def sendAlert(domain, username, pwd, filePath, sender, receivers):
-        mailServer = smtplib.SMTP(domain) 
-        mailServer.starttls()
-        mailServer.login(username, pwd)
-        content = addContent(filePath)
-        mailServer.send_message(content, sender, receivers)
-        
-        return
 
-def addContent(filePath):
-        alert = EmailMessage()
-        alert["subject"]=f"Ransomware attack detected : Start Fast Recovery"
-        alert["Content-Type"]=f"text/plain" # multipart/mixed         
-        alert.set_content("""
-            Dear Administrator,
-
-            Our system has detected a potential ransomware attack on the application.
-            Immediate action is required to prevent data loss and further damage.
-            
-            Detected at: -- aggiungi data in qualche modo
-            In the attacche document you can find further information regarding data discrepancies detected.                      
-            Please investigate the issue promptly and take necessary measures to mitigate the attack.
-            Start Fast delphix Recovery process of the affected Databases.
-
-            Best regards,
-                                
-            Ransomware Detection System
-                        """)
-        with open(filePath, 'r', encoding="utf-8") as zip_file:
-            doc_data = zip_file.read()
-
-        alert.add_attachment(doc_data, maintype="application", subtype="zip", filename="discrepancies.txt")
-        alert.get
-        return alert
 
     
 
