@@ -7,8 +7,14 @@ email : d.gobbetti@nsr.it
 """
 TO DO:
     -   handle worst case scenarios
-        -   valutare dimensione report e chuking se supera limite (dimensione email - x MB) -> invio di più mail, con ogni mail che indichi solo discrepanza rilevata alla tabella x colonna y
-        -  creare livello persistente semplice con sqlLite che fornisca un log dei report e il loro stato di invio, in modo tale che se la mail non venga inviata, si può agire manualemente
+        -X valutare dimensione report e chuking se supera limite (dimensione email - x MB) -> invio di più mail, con ogni mail che indichi solo discrepanza rilevata alla tabella x colonna y
+        -X creare livello persistente semplice con sqlLite che fornisca un log dei report e il loro stato di invio, in modo tale che se la mail non venga inviata, si può agire manualemente
+        - add tech agnostic module
+        - timing with completion bars
+        -X costrutti try-catch
+        - testing
+        - piccolo portale?
+    
     -   
         
 """
@@ -36,6 +42,7 @@ import requests
 import smtplib
 import oracledb
 from email.message import EmailMessage
+from db_techagnostic_connector import DBConnector
 # import subprocess - for future parallel support
 
 # standard library modules
@@ -43,8 +50,8 @@ import urllib3
 import json
 import os
 import math
-import threading
-from chardet import detect
+import shutil
+# import threading
 from dateutil import parser
 from datetime import datetime
 import zipfile
@@ -229,147 +236,176 @@ class Repository(ApiObject):
         """
 
 def main():
+    try:
+        with open('config.json', 'r') as cfg:
+            cfg_dict = json.load(cfg)
 
+        for rep in cfg_dict.get('Replications'):
+            try:
+                engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
+                engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
+                engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
+                engine_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['host'])
+                engine_13.create_session(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['apiVersion'])
+                engine_13.login_data(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['pwd'])
+                engineCompl_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['host'])
+                engineCompl_13.login_compliance(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['pwd'])
 
-    with open('config.json', 'r') as cfg:
-        cfg_dict = json.load(cfg)
+                engine_1.replication(rep['replicationSpec'])
+                engine_13.refresh(rep['vdbContainerRef'], rep['dSourceContainer_ref'])
 
+                engineCompl_13.mask(rep['jobId'])
 
-    for rep in cfg_dict.get('Replications'):
+                discrepant_values = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
 
-        engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
-        engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
-        engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
-        engine_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['host'])
-        engine_13.create_session(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['apiVersion'])
-        engine_13.login_data(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['pwd'])
-        engineCompl_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['host'])
-        engineCompl_13.login_compliance(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['pwd'])
+                if(discrepant_values):
+                    report_file_name = datetime.now().strftime('%d_%m_%Y-%H_%M_%S')
+                
+                    register_reports(discrepant_values, report_file_name)
+                    reports_zip_path = create_report(report_file_name) # zip the new discrepancies file
+                    
+                    send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'])
+                    backup_report(reports_zip_path)
+            except Exception as e:
+                print(f"Error processing replication {rep['replicationSpec']}: {str(e)}")
+    except Exception as e:
+        print(f"Error in main function: {str(e)}")
 
-        engine_1.replication(rep['replicationSpec'])
-        engine_13.refresh(rep['vdbContainerRef'], rep['dSourceContainer_ref'])
-    
-
-        engineCompl_13.mask(rep['jobId'])
-
-        discrepant_values = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
-
-        
-        if(discrepant_values):
-        
-            register_reports(discrepant_values)
-            reports_zip_path = create_report() # zip the new discrepancies file
-            
-            send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'])
-            backup_report(reports_zip_path)
-
-        """
-        in corrispondenza di un attacco ransomware, invio il singolo report creato all'attuale esecuzione zippato. che poi viene backuppato in un db.
-        parallelamente in una base di dati(sqllite) viene tenuto traccia dello stato del processo di invio del report, per gestire manualmente il processo di invio del report in caso di malfunzionamento.
-        """
-
-def create_report():
-    # report_path=(f"Evaluation/discrepancies{(datetime.now()).strftime("%d_%m_%Y-%H_%M_%S")}.txt") #.replace(" ", "_").replace(":", "_")
-    os.chdir("Evaluation") 
-    test_file_path = "discrepancies_email_test" + (datetime.now()).strftime('%d_%m_%Y-%H_%M_%S') + ".txt"
-    flags = os.O_CREAT | os.O_WRONLY  # Create file if it doesn't exist, open for writing
-    mode = 0o666  # Permissions for the file
-    fd = os.open(test_file_path, flags, mode)
-    os.write(fd, b"TEST - discrepancies test")
-    os.close(fd)
-    # report_path = "Evaluation\discrepancies_email_test.txt"
-    """
-    for row in discrepantValues:
-        with open(report_path, "w") as report:
-            report.write(rf"descrepancy revealed in database {row[0]} table {row[1]} column {row[2]}. Value {row[3]} has {row[4] if row[4] is not None else 0} occurrences while the expected occurrences are {row[5]}")
-    """
-    return zip_report(test_file_path)
+def create_report(report_file_name):
+    try:
+        os.chdir("Evaluation") 
+        test_file_path = f"{report_file_name}.txt"
+        flags = os.O_CREAT | os.O_WRONLY  # Create file if it doesn't exist, open for writing
+        mode = 0o666  # Permissions for the file
+        fd = os.open(test_file_path, flags, mode)
+        os.write(fd, b"TEST - discrepancies test")
+        os.close(fd)
+        return zip_report(test_file_path)
+    except Exception as e:
+        print(f"Error creating report: {str(e)}")
+        return None
 
 def zip_report(report_path):
-    zip_path = report_path.replace(".txt", ".zip")
-    with zipfile.ZipFile(zip_path, "x") as zip:
-        zip.write(report_path, compresslevel=9)
-    os.remove(report_path)
-    update_report_status("")
-    return asses_dimensions(zip_path=zip_path)
-
+    try:
+        zip_path = report_path.replace(".txt", ".zip")
+        with zipfile.ZipFile(zip_path, "x") as zip:
+            zip.write(report_path, compresslevel=9)
+        os.remove(report_path)
+        return asses_dimensions(zip_path=zip_path)
+    except Exception as e:
+        print(f"Error zipping report: {str(e)}")
+        return None
 
 def asses_dimensions(zip_path: str):
-     # Constants
-    CHUNK_SIZE = 150 * 1024 * 1024  # 150MB in bytes
-    MAX_SIZE = 300 * 1024 * 1024  # 300MB in bytes
-    
-    # Check the size of the file
-    file_size = os.path.getsize(zip_path)
-    
-    # If file is smaller than or equal to 300MB, no need to chunk
-    if file_size <= MAX_SIZE:
-        return [zip_path]  # Return original file path
-    
-    # Split into chunks if file is larger than 300MB
-    file_parts = []
-    with open(zip_path, 'rb') as f:
-        total_parts = math.ceil(file_size / CHUNK_SIZE)
-        base_name, ext = os.path.splitext(zip_path)
+    try:
+        # Constants
+        CHUNK_SIZE = 150 * 1024 * 1024  # 150MB in bytes
+        MAX_SIZE = 300 * 1024 * 1024  # 300MB in bytes
         
-        for i in range(total_parts):
-            part_file_path = f"{base_name}_part_{i + 1}{ext}"
-            with open(part_file_path, 'wb') as chunk_file:
-                chunk_data = f.read(CHUNK_SIZE)
-                if chunk_data:
-                    print(chunk_data)
-                    chunk_file.write(chunk_data)
-                    file_parts.append(part_file_path)
-    return file_parts
+        # Check the size of the file
+        file_size = os.path.getsize(zip_path)
+        
+        # If file is smaller than or equal to 300MB, no need to chunk
+        if file_size <= MAX_SIZE:
+            update_report_status(zip_path[:-4], "REPORT ZIP CREATED")
+            return [zip_path]  # Return original file path
+        
+        # Split into chunks if file is larger than 300MB
+        file_parts = []
+        with open(zip_path, 'rb') as f:
+            total_parts = math.ceil(file_size / CHUNK_SIZE)
+            base_name, ext = os.path.splitext(zip_path)
+            
+            for i in range(total_parts):
+                part_file_path = f"{base_name}_part_{i + 1}{ext}"
+                with open(part_file_path, 'wb') as chunk_file:
+                    chunk_data = f.read(CHUNK_SIZE)
+                    if chunk_data:
+                        print(chunk_data)
+                        chunk_file.write(chunk_data)
+                        file_parts.append(part_file_path)
+        update_report_status(zip_path[:-4], "MULTIPLE REPORT ZIP CREATED")
+        return file_parts
+    except Exception as e:
+        print(f"Error assessing dimensions: {str(e)}")
+        return None
 
+def update_report_status(report_name: str, status: str) -> None:
+    try:
+        conn = sqlite3.connect('reports.db')
+        cursor = conn.cursor()
 
-def update_report_status(status: str) -> None:
-    conn = sqlite3.connect('reports.db')
-    cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE reports
+                SET processing_status = :status 
+                    WHERE report_name = :report_name
+                    """, {
+                            'status': status,
+                            'report_name': report_name
+                            })
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating report status: {str(e)}")
+    finally:
+        if conn:
+            conn.close()
 
+def register_reports(discrepant_values, report_file_name):
+    conn = None
+    try:
+        conn = sqlite3.connect('reports.db')
+        cursor = conn.cursor()
 
-def register_reports(discrepant_values):
-    
-    conn = sqlite3.connect('reports.db')
-    cursor = conn.cursor()
+        processing_status = "REPORT TO BE GENERATED"
 
-    
-    report_name = "discrepancies_email_test_" + datetime.now().strftime('%d_%m_%Y-%H_%M_%S') + ".zip"
-    processing_status = "TO GENERATE"
-
-    # Create the reports table if it doesn't exist
-    cursor.execute('''
-    INSERT INTO reports (report_name, processing_status, creation_timestamp, data)
-    VALUES (:report_name, :processing_status, :creation_timestamp, :data)
-    ''', {
-        'report_name': report_name,
-        'processing_status': processing_status,
-        'created_at': None,
-    })
-
-    for row in discrepant_values:
+        # Create the reports table if it doesn't exist
         cursor.execute('''
         INSERT INTO reports (report_name, processing_status, creation_timestamp, data)
-        VALUES (:db, :table, :column, :value, :discrepance)
+        VALUES (:report_name, :processing_status, :creation_timestamp, :data)
         ''', {
-            'db': row[0],
-            'table': row[1],
-            'column': row[2],
-            'value': row[3],
-            'discrepance': f'effettivo {row[3]} != atteso {row[4]}',
-            'report_id': random
+            'report_name': report_file_name,
+            'processing_status': processing_status,
+            'created_at': None,
         })
 
-    conn.commit()
-    conn.close()
+        report_id = cursor.lastrowid
 
-    return
+        for row in discrepant_values:
+            cursor.execute('''
+            INSERT INTO discrepances (database, table, column, value)
+            VALUES (:db, :table, :column, :value, :discrepance)
+            ''', {
+                'db': row[0],
+                'table': row[1],
+                'column': row[2],
+                'value': row[3],
+                'discrepance': f'effettivo {row[3]} != atteso {row[4]}',
+                'report_id': report_id
+            })
 
+        conn.commit()
+    except Exception as e:
+        print(f"Error registering reports: {str(e)}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
 
-def backup_report(reports_dir_path):
+def backup_report(reports_zip_path):
+        # Create the reports backup directory if it doesn't exist
+        if not os.path.exists("Evaluation/backup"):
+            os.makedirs("Evaluation/backup")
+        # add the file to the backup directory
+        for report_zip_path in reports_zip_path:
+            shutil.copy(report_zip_path, "Evaluation/backup")
+            if(len(reports_zip_path) == 1):
+                update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP")
+            elif(len(reports_zip_path) > 1):
+                update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP")
+            
 
-
-    return
+        return
 
 
 def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: List[str]) -> None:
@@ -385,24 +421,28 @@ def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: 
                 content = add_content(report)
                 print(receivers)
                 mail_server.send_message(content, sender, receivers)
+                if(len(reports_path) == 1):
+                    update_report_status(report[:-4], f"REPORT SENT")
+                elif(len(reports_path) > 1):
+                    update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT")
         # mail_server.close()
-        
         return
 
 def add_content(report_attach: str) -> None:
+        alertDate = datetime.now().strftime('%d_%m_%Y-%H_%M_%S')
         alert = EmailMessage()
         alert[""]=f"Ransomware attack detected : Start Fast Recovery"
         alert["Content-Type"]=f"text/plain" # multipart/mixed         
-        alert.set_content("""
+        alert.set_content(f"""
             Dear Administrator,
 
             Our system has detected a potential ransomware attack on the application.
             Immediate action is required to prevent data loss and further damage.
             
-            Detected at: -- aggiungi data in qualche modo
-            In the attacche document you can find further information regarding data discrepancies detected.                      
+            Detected at: {alertDate}
+            In the attached document you can find further information regarding data discrepancies detected.                      
             Please investigate the issue promptly and take necessary measures to mitigate the attack.
-            Start Fast delphix Recovery process of the affected Databases.
+            If the revealed discrepancies are critical, start delphix Fast Recovery process of the affected Databases.
 
             Best regards,
                                 
