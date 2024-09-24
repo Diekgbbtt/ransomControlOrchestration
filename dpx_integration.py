@@ -13,6 +13,22 @@ TO DO:
         
 """
 
+"""
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_name VARCHAR(255) NOT NULL,
+        processing_status VARCHAR(255) NOT NULL,
+        creation_timestamp DATE,
+        data BLOB
+
+
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        db VARCHAR(255)
+        table VARCHAR(255),
+        column VARCHAR(255),
+        discrepanciy VARCHAR(255),
+        FOREIGN KEY (report_id) REFERENCES reports (id)
+"""
+
 
 
 # third party modules
@@ -217,13 +233,10 @@ def main():
 
     with open('config.json', 'r') as cfg:
         cfg_dict = json.load(cfg)
-    
-    
 
 
     for rep in cfg_dict.get('Replications'):
-    
-        """
+
         engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
         engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
         engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
@@ -239,16 +252,16 @@ def main():
 
         engineCompl_13.mask(rep['jobId'])
 
-        # discrepantValues = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
-        """
+        discrepant_values = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
+
         
-        # if(discrepantValues):
+        if(discrepant_values):
         
-        register_reports()
-        reports_zip_path = create_report() # zip the new discrepancies file
-        
-        send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'])
-        backup_report(reports_zip_path)
+            register_reports(discrepant_values)
+            reports_zip_path = create_report() # zip the new discrepancies file
+            
+            send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'])
+            backup_report(reports_zip_path)
 
         """
         in corrispondenza di un attacco ransomware, invio il singolo report creato all'attuale esecuzione zippato. che poi viene backuppato in un db.
@@ -315,10 +328,11 @@ def update_report_status(status: str) -> None:
     cursor = conn.cursor()
 
 
-def register_reports() -> None:
+def register_reports(discrepant_values):
     
     conn = sqlite3.connect('reports.db')
     cursor = conn.cursor()
+
     
     report_name = "discrepancies_email_test_" + datetime.now().strftime('%d_%m_%Y-%H_%M_%S') + ".zip"
     processing_status = "TO GENERATE"
@@ -330,9 +344,22 @@ def register_reports() -> None:
     ''', {
         'report_name': report_name,
         'processing_status': processing_status,
-        'creation_timestamp': None,
-        'data': None
+        'created_at': None,
     })
+
+    for row in discrepant_values:
+        cursor.execute('''
+        INSERT INTO reports (report_name, processing_status, creation_timestamp, data)
+        VALUES (:db, :table, :column, :value, :discrepance)
+        ''', {
+            'db': row[0],
+            'table': row[1],
+            'column': row[2],
+            'value': row[3],
+            'discrepance': f'effettivo {row[3]} != atteso {row[4]}',
+            'report_id': random
+        })
+
     conn.commit()
     conn.close()
 
@@ -342,7 +369,7 @@ def register_reports() -> None:
 def backup_report(reports_dir_path):
 
 
-   return
+    return
 
 
 def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: List[str]) -> None:
