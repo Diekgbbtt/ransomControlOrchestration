@@ -42,16 +42,19 @@ import requests
 import smtplib
 import oracledb
 from email.message import EmailMessage
-from db_techagnostic_connector import DBConnector
+# from db_techagnostic_connector import DBConnector
 # import subprocess - for future parallel support
 
 # standard library modules
+import sys
+import warnings
 import urllib3
 import json
 import os
 import math
 import shutil
 # import threading
+import time
 from dateutil import parser
 from datetime import datetime
 import zipfile
@@ -61,6 +64,7 @@ import sqlite3
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # needed to suppress warnings
+warnings.simplefilter('ignore')
 requests.packages.urllib3.disable_warnings()
 
 oracledb.defaults.fetch_lobs = False
@@ -242,6 +246,7 @@ def main():
 
         for rep in cfg_dict.get('Replications'):
             try:
+
                 engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
                 engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
                 engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
@@ -259,20 +264,29 @@ def main():
                 discrepant_values = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
 
                 if(discrepant_values):
-                    report_file_name = datetime.now().strftime('%d_%m_%Y-%H_%M_%S')
-                
-                    register_reports(discrepant_values, report_file_name)
-                    reports_zip_path = create_report(report_file_name) # zip the new discrepancies file
-                    
-                    send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'])
-                    backup_report(reports_zip_path)
+                    report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
+                    db_conn = sqlite3.connect('reports.db')
+                    register_reports(discrepant_values, report_file_name, db_conn)
+                    reports_zip_path = create_report(report_file_name, db_conn) # zip the new discrepancies file
+                    send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'], connector=db_conn)
+                    backup_report(reports_zip_path, db_conn)
+            
             except Exception as e:
                 print(f"Error processing replication {rep['replicationSpec']}: {str(e)}")
     except Exception as e:
         print(f"Error in main function: {str(e)}")
 
-def create_report(report_file_name):
+def print_process_status():
+    sys.stdout.write('.')
+    sys.stdout.flush()
+    time.sleep(2)
+    sys.stdout.write('\b \b' * 3)  # Erase the last three dots
+    return
+
+def create_report(report_file_name, db_conn):
     try:
+        if not os.path.exists("Evaluation"):
+            os.makedirs("Evaluation")
         os.chdir("Evaluation") 
         test_file_path = f"{report_file_name}.txt"
         flags = os.O_CREAT | os.O_WRONLY  # Create file if it doesn't exist, open for writing
@@ -280,23 +294,23 @@ def create_report(report_file_name):
         fd = os.open(test_file_path, flags, mode)
         os.write(fd, b"TEST - discrepancies test")
         os.close(fd)
-        return zip_report(test_file_path)
+        return zip_report(test_file_path, db_conn)
     except Exception as e:
         print(f"Error creating report: {str(e)}")
         return None
 
-def zip_report(report_path):
+def zip_report(report_path, db_conn):
     try:
         zip_path = report_path.replace(".txt", ".zip")
         with zipfile.ZipFile(zip_path, "x") as zip:
             zip.write(report_path, compresslevel=9)
         os.remove(report_path)
-        return asses_dimensions(zip_path=zip_path)
+        return asses_dimensions(zip_path=zip_path, connector=db_conn)
     except Exception as e:
         print(f"Error zipping report: {str(e)}")
         return None
 
-def asses_dimensions(zip_path: str):
+def asses_dimensions(zip_path: str, connector):
     try:
         # Constants
         CHUNK_SIZE = 150 * 1024 * 1024  # 150MB in bytes
@@ -307,7 +321,7 @@ def asses_dimensions(zip_path: str):
         
         # If file is smaller than or equal to 300MB, no need to chunk
         if file_size <= MAX_SIZE:
-            update_report_status(zip_path[:-4], "REPORT ZIP CREATED")
+            update_report_status(zip_path[:-4], "REPORT ZIP CREATED", connector)
             return [zip_path]  # Return original file path
         
         # Split into chunks if file is larger than 300MB
@@ -324,17 +338,21 @@ def asses_dimensions(zip_path: str):
                         print(chunk_data)
                         chunk_file.write(chunk_data)
                         file_parts.append(part_file_path)
-        update_report_status(zip_path[:-4], "MULTIPLE REPORT ZIP CREATED")
+        update_report_status(zip_path[:-4], "MULTIPLE REPORT ZIP CREATED", connector)
         return file_parts
     except Exception as e:
         print(f"Error assessing dimensions: {str(e)}")
         return None
 
-def update_report_status(report_name: str, status: str) -> None:
-    try:
-        conn = sqlite3.connect('reports.db')
-        cursor = conn.cursor()
+def update_report_status(report_name: str, status: str, db_conn) -> None:
 
+    try:
+        cursor = db_conn.cursor()
+
+        cursor.execute('''
+            SELECT name FROM sqlite_master WHERE type='table';
+                       ''')
+        
         cursor.execute("""
             UPDATE reports
                 SET processing_status = :status 
@@ -343,56 +361,56 @@ def update_report_status(report_name: str, status: str) -> None:
                             'status': status,
                             'report_name': report_name
                             })
-        conn.commit()
+        db_conn.commit()
+        print(f"Report {report_name} status updated to {status}")
+
     except Exception as e:
         print(f"Error updating report status: {str(e)}")
-    finally:
-        if conn:
-            conn.close()
 
-def register_reports(discrepant_values, report_file_name):
-    conn = None
+def register_reports(discrepant_values, report_file_name, db_conn):
     try:
-        conn = sqlite3.connect('reports.db')
-        cursor = conn.cursor()
+        cursor = db_conn.cursor()
+    except Exception as e:
+        print(f"Error connecting to db: {str(e)}")
+        if db_conn:
+            db_conn.rollback()
+        return
 
+    try:
         processing_status = "REPORT TO BE GENERATED"
-
+    
         # Create the reports table if it doesn't exist
         cursor.execute('''
-        INSERT INTO reports (report_name, processing_status, creation_timestamp, data)
-        VALUES (:report_name, :processing_status, :creation_timestamp, :data)
+        INSERT INTO reports (report_name, processing_status, created_at)
+        VALUES (:report_name, :processing_status, :created_at)
         ''', {
             'report_name': report_file_name,
             'processing_status': processing_status,
-            'created_at': None,
+            'created_at': datetime.now().strftime('%d_%m_%Y-%H_%M_%S'),
         })
 
         report_id = cursor.lastrowid
 
         for row in discrepant_values:
             cursor.execute('''
-            INSERT INTO discrepances (database, table, column, value)
-            VALUES (:db, :table, :column, :value, :discrepance)
+            INSERT INTO discrepancies (db, "table", "column", value, discrepancy, report_id)
+            VALUES (:db, :table, :column, :value, :discrepancy, :report_id)
             ''', {
                 'db': row[0],
                 'table': row[1],
                 'column': row[2],
                 'value': row[3],
-                'discrepance': f'effettivo {row[3]} != atteso {row[4]}',
+                'discrepancy': f'effettivo {row[3]} != atteso {row[4]}',
                 'report_id': report_id
             })
 
-        conn.commit()
+        db_conn.commit()
     except Exception as e:
         print(f"Error registering reports: {str(e)}")
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
+        if db_conn:
+            db_conn.rollback()
 
-def backup_report(reports_zip_path):
+def backup_report(reports_zip_path, db_conn):
         # Create the reports backup directory if it doesn't exist
         if not os.path.exists("Evaluation/backup"):
             os.makedirs("Evaluation/backup")
@@ -400,15 +418,14 @@ def backup_report(reports_zip_path):
         for report_zip_path in reports_zip_path:
             shutil.copy(report_zip_path, "Evaluation/backup")
             if(len(reports_zip_path) == 1):
-                update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP")
+                update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP", db_conn)
             elif(len(reports_zip_path) > 1):
-                update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP")
-            
-
+                update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP", db_conn)
+        db_conn.close()
         return
 
 
-def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: List[str]) -> None:
+def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: List[str], connector) -> None:
         """
         An SMTP instance encapsulates an SMTP connection. It has methods that support a full repertoire of SMTP and ESMTP operations. 
         If the optional host and port parameters are given, the SMTP connect() method is called with those parameters during initialization.
@@ -419,12 +436,11 @@ def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: 
             mail_server.login(username, pwd)
             for report in reports_path: 
                 content = add_content(report)
-                print(receivers)
                 mail_server.send_message(content, sender, receivers)
                 if(len(reports_path) == 1):
-                    update_report_status(report[:-4], f"REPORT SENT")
+                    update_report_status(report[:-4], f"REPORT SENT", connector)
                 elif(len(reports_path) > 1):
-                    update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT")
+                    update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT", connector)
         # mail_server.close()
         return
 
@@ -467,29 +483,17 @@ def add_content(report_attach: str) -> None:
         """
         # https://docs.python.org/3/library/email.message.html#email.message.EmailMessage.add_attachment
 
-        print(alert.is_multipart())
-        for part in alert.walk():
-            print(part.get_content_type())
-            print(part.get_body())
-
-        attachs = alert.iter_attachments()
-        for a in attachs:
-            print(' \n \n attachments: \n')
-            print(a.get_content_type())
-            print(a.get_content_disposition())
-            print(a.get_filename())
-            print(a.get_content())
-
         return alert
 
 
 def evaluate(db_hostname, db_port, username, pwd, sid):
     
-    conn = oracledb.connect(host=db_hostname, port=db_port, user=username, password=pwd, sid=sid)
-    curs = conn.cursor()
+    start_time = datetime.now()
+    vdb_conn = oracledb.connect(host=db_hostname, port=db_port, user=username, password=pwd, sid=sid)
+    curs = vdb_conn.cursor()
 
-    rs = curs.execute("SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO FROM ( \
-                    SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO, \
+    rs = curs.execute("SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO FROM \
+                      ( SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO, \
         CASE WHEN CAST(result AS VARCHAR(200)) = RES_ATTESO THEN 1 ELSE 0 END AS EVALUATION \
             FROM CHECK_BASE CB LEFT JOIN ( \
             WITH numbers AS( \
@@ -503,6 +507,8 @@ def evaluate(db_hostname, db_port, username, pwd, sid):
                     ORDER BY ID, n ) CR ON CB.VALUE = CAST(CR.chiavi AS VARCHAR(200)) \
                                                 LEFT JOIN CHECK_LINK CL ON CB.ID = CL.ID_BASE \
                                                     JOIN CHECK_VIEW_2 CV2 ON CL.ID_CHECK = CV2.ID) WHERE EVALUATION = 0")
+    end_time = datetime.now()
+    print(f"discrepancies evaluation finished in {end_time - start_time}")
 
     return rs
 
@@ -686,6 +692,7 @@ class DelphixEngine:
 
     def replication(self, reference):
 
+        start_time = datetime.now()
         uri_repExe = rf"resources/json/delphix/replication/spec/{reference}/execute"
         job_id = (self._post(uri_repExe)).json()['job']
         uri_jobId = rf"resources/json/delphix/job/{job_id}"
@@ -706,11 +713,15 @@ class DelphixEngine:
         # print(self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec"))
         # print(sourceState_rep)
         # print(sourceState_rep[0]['activePoint'])
+        print(rf"Preparing replication job {(self._get(uri_jobId, key="result"))['target']}...")
         while(self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec")[0]["activePoint"]==None):
-            print(rf"Preparing replication job {(self._get(uri_jobId, key="result"))['target']}...")
+            print_process_status()
+        print(rf"Waiting for replication {(self._get(uri_jobId, key="result"))['target']} to finish...")
         while(self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec")[0]["activePoint"]!=None):
-            print(rf"Waiting for replication {(self._get(uri_jobId, key="result"))['target']} to finish...")
-        print(rf"replication job {(self._get(uri_jobId, key="result"))['target']} completed")
+            print_process_status()
+        end_time = datetime.now()
+        print(rf"replication job {(self._get(uri_jobId, key="result"))['target']} completed in {end_time-start_time}")
+
         return
     
     def refresh(self, vdb_ref, dSource_ref):
@@ -723,6 +734,7 @@ class DelphixEngine:
         Altro modo, tramite api /resources/json/delphix/database/{ref} si risale ai dati del database contenente il dSource, tra cui il current timeflow da cui si può risalire al parent snapshot e la sua referenza
         Problema --> lo snapshot effettuato alla creazione della replica, non è referenziato nel timeflow -->provare a fare uno snapshot per 
         """
+        start_time = datetime.now()
         uri_snap = rf"resources/json/delphix/capacity/snapshot"
 
         # uri_vdb = rf"/resources/json/delphix/database/{vdb_ref}"
@@ -737,8 +749,6 @@ class DelphixEngine:
         # print(self._get(uri_snap, key="result"))
 
         snap_ref = snaps[0]['snapshot']
-
-        print(snap_ref)
 
         uri_refresh = rf"resources/json/delphix/database/{vdb_ref}/refresh"
         data = {
@@ -755,16 +765,17 @@ class DelphixEngine:
 	    }
         job_id = (self._post(uri_refresh, data)).json()['job']
         uri_jobId = rf"resources/json/delphix/job/{job_id}"
-
+        print(rf"Waiting for refresh of {vdb_ref} to finish...")
         while(self._get(uri_jobId, key="result")['jobState']!="COMPLETED"):
-            print(rf"Waiting for refresh of {vdb_ref} to finish...")
-            # print(self._get(uri_jobId, key="result"))['events'][len(self._get(uri_jobId, key="result")['events'])-1]['messageDetails']
-        print(rf"refresh of "+ vdb_ref +" completed")
+            print_process_status()
+        end_time = datetime.now()
+        print(f"refresh of {vdb_ref} completed in {end_time-start_time}")
 
         return
 
     def mask(self, jobId):
 
+        start_time = datetime.now()
         uri="masking/api/executions"
 
         data={ 
@@ -773,16 +784,18 @@ class DelphixEngine:
 
         execId = self._post(uri, data).json()['executionId']
         uriExec = rf"masking/api/executions/{execId}"
-
+        
+        print(rf"Waiting for control to finish...")
         while(self._get(uriExec, key="status")=="RUNNING"):
-            print(rf"Waiting for control to finish...")
+            print_process_status()
         if(self._get(uriExec, key="status")=="SUCCEEDED"):
-            print(rf"Control completed successfully")
+            end_time = datetime.now()
+            print(rf"Control completed successfully in {end_time-start_time}")
         elif(self._get(uriExec, key="status")=="FAILED"): 
             print(rf"Error encountered during Control")
 
         return
-            
+
 
 if __name__ == "__main__":
     main()

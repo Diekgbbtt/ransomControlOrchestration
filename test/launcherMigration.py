@@ -4,7 +4,7 @@ import sys
 
 import subprocess
 
-import dpx_integration
+import orchestration
 
 
 def main():
