@@ -42,7 +42,7 @@
     "mail": {
         "smtpServer":"outlook.office365.com",
         "usr":"d.gobbetti@nsr.it",
-        "pwd":"HUKQRYwe69+"
+        "pwd":"HUKQRYQwe69+"
     },
 
 
@@ -56,7 +56,7 @@
             "replicationSpec": "REPLICATION_SPEC-8",
             "vdbContainerRef": "ORACLE_DB_CONTAINER-247",
             "dSourceContainer_ref": "ORACLE_DB_CONTAINER-239",
-            "jobId": 21,
+            "jobId": 24,
             "mailReceivers": [
                 "diegogobbetti111@gmail.com"
             ]
