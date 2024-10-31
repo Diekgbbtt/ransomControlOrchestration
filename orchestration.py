@@ -185,15 +185,15 @@ class ransomChek(controlClass):
 
                 engineCompl_13.mask(rep['jobId'])
 
-                discrepant_values = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
+                discrepant_values = self.evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
 
                 if(discrepant_values):
                     report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
                     db_conn = connect('reports.db')
-                    register_reports(discrepant_values, report_file_name, db_conn)
-                    reports_zip_path = create_report(report_file_name, db_conn) # zip the new discrepancies file
-                    send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'], connector=db_conn)
-                    backup_report(reports_zip_path, db_conn)
+                    self.register_reports(discrepant_values, report_file_name, db_conn)
+                    reports_zip_path = self.create_report(report_file_name, db_conn) # zip the new discrepancies file
+                    self.send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'], connector=db_conn)
+                    self.backup_report(reports_zip_path, db_conn)
             
             except Exception as e:
                 print(f"Error processing replication {rep['replicationSpec']}: {str(e)}")
@@ -894,7 +894,7 @@ class DelphixEngine:
 
 
 if __name__ == "__main__":
-    main()
+    controlDatabase()
 
 
 
