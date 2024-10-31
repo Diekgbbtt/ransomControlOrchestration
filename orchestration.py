@@ -109,42 +109,7 @@ Args:
 Returns:
     A result set containing the discrepancies between the expected and actual values in the database.
 """
-def main():
-    try:
-        with open('config.json', 'r') as cfg:
-            cfg_dict = json_load(cfg)
 
-        for rep in cfg_dict.get('Replications'):
-            try:
-
-                engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
-                engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
-                engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
-                engine_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['host'])
-                engine_13.create_session(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['apiVersion'])
-                engine_13.login_data(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['pwd'])
-                engineCompl_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['host'])
-                engineCompl_13.login_compliance(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['pwd'])
-
-                engine_1.replication(rep['replicationSpec'])
-                engine_13.refresh(rep['vdbContainerRef'], rep['dSourceContainer_ref'])
-
-                engineCompl_13.mask(rep['jobId'])
-
-                discrepant_values = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
-
-                if(discrepant_values):
-                    report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
-                    db_conn = connect('reports.db')
-                    register_reports(discrepant_values, report_file_name, db_conn)
-                    reports_zip_path = create_report(report_file_name, db_conn) # zip the new discrepancies file
-                    send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'], connector=db_conn)
-                    backup_report(reports_zip_path, db_conn)
-            
-            except Exception as e:
-                print(f"Error processing replication {rep['replicationSpec']}: {str(e)}")
-    except Exception as e:
-        print(f"Error in main function: {str(e)}")
 
 def controlDatabase(check: controlClass):
 
@@ -196,8 +161,42 @@ class ransomChek(controlClass):
         return
 
     def start(self):
+        try:
+            with open('config.json', 'r') as cfg:
+                cfg_dict = json_load(cfg)
 
-        return
+        except Exception as e:
+            print(f"Error opening config: {str(e)}")
+
+        for rep in cfg_dict.get('Replications'):
+            try:
+
+                engine_1 = DelphixEngine(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['host'])
+                engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
+                engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
+                engine_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['host'])
+                engine_13.create_session(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['apiVersion'])
+                engine_13.login_data(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['pwd'])
+                engineCompl_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['host'])
+                engineCompl_13.login_compliance(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['pwd'])
+
+                engine_1.replication(rep['replicationSpec'])
+                engine_13.refresh(rep['vdbContainerRef'], rep['dSourceContainer_ref'])
+
+                engineCompl_13.mask(rep['jobId'])
+
+                discrepant_values = evaluate(cfg_dict.get('vdbs_control').get(rep['vdbRef'])['host'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['port'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['usr'], cfg_dict.get('vdbs_control').get(rep['vdbRef'])['pwd'],  cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid'] if cfg_dict.get('vdbs_control').get(rep['vdbRef'])['sid']!=None else None)
+
+                if(discrepant_values):
+                    report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
+                    db_conn = connect('reports.db')
+                    register_reports(discrepant_values, report_file_name, db_conn)
+                    reports_zip_path = create_report(report_file_name, db_conn) # zip the new discrepancies file
+                    send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'], connector=db_conn)
+                    backup_report(reports_zip_path, db_conn)
+            
+            except Exception as e:
+                print(f"Error processing replication {rep['replicationSpec']}: {str(e)}")
 
     def finish(self):
 
@@ -407,7 +406,7 @@ class ransomChek(controlClass):
     Returns:
         None
     """
-    def backup_report(reports_zip_path, db_conn):
+    def backup_report(self, reports_zip_path, db_conn):
 
         # Create the reports backup directory if it doesn't exist
         if not path.exists("Evaluation/backup"):
@@ -417,9 +416,9 @@ class ransomChek(controlClass):
         for report_zip_path in reports_zip_path:
             copy(report_zip_path, "Evaluation/backup")
             if len(reports_zip_path) == 1:
-                update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP", db_conn)
+                self.update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP", db_conn)
             elif len(reports_zip_path) > 1:
-                update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP", db_conn)
+                self.update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP", db_conn)
         
         db_conn.close()
         return
@@ -446,7 +445,7 @@ class ransomChek(controlClass):
             None
     """
 
-    def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: list[str], connector) -> None:
+    def send_alert(self, domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: list[str], connector) -> None:
 
         with SMTP(domain) as mail_server:
             # Start TLS for security
@@ -454,14 +453,14 @@ class ransomChek(controlClass):
             mail_server.login(username, pwd)
             
             for report in reports_path: 
-                content = add_content(report)  # Prepare the email content with the report attachment
+                content = self.add_content(report)  # Prepare the email content with the report attachment
                 mail_server.send_message(content, sender, receivers)  # Send the email
                 
                 # Update the report status in the database
                 if len(reports_path) == 1:
-                    update_report_status(report[:-4], f"REPORT SENT", connector)
+                    self.update_report_status(report[:-4], f"REPORT SENT", connector)
                 elif len(reports_path) > 1:
-                    update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT", connector)
+                    self.update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT", connector)
         
         return
 
