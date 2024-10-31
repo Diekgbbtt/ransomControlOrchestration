@@ -140,13 +140,22 @@ class controlFactory:
         self.control = controlName
     
     def instance_control(self, data):
-        Control = self.control(data)
-        return Control
+        
+        match self.control:
+            case 'ransomCheck':
+                return ransomCheck(data)
+            case 'anotherCheck':
+                return anotherCheck(data)
+        
+    
 
     
-class ransomChek(controlClass):
+class ransomCheck(controlClass):
 
     def __init__(self, data):
+
+        for key, val in data.items():
+            setattr(self, key, val)
 
 
         
