@@ -46,6 +46,7 @@ from email.message import EmailMessage
 from progress.bar import IncrementalBar
 
 # standard library modules
+from abc import ABC, abstractmethod
 from sys import stdout
 from warnings import simplefilter
 from urllib3 import disable_warnings, exceptions
@@ -85,69 +86,6 @@ for(row : results)
 
 
 
-def controlDatabase(check: controlClass):
-
-    check.start()
-    while( not check.finish()):
-        print("controllo in corso")
-
-
-class controlFactory:
-
-    def __init__(self, controlName : controlClass):
-        self.control = controlName
-    
-    def instance_control(self, data):
-        Control = self.control(data)
-        return Control
-
-
-class controlClass:
-
-    @abstractmethod
-    def __init__(self, data):
-        
-        return
-
-    @abstractmethod
-    def start(self):
-
-        return
-
-    @abstractmethod
-    def finish(self):
-
-        return
-    
-class ransomChek(controlClass):
-
-    def __init__(self, data):
-        
-        return
-
-    def start(self):
-
-        return
-
-    def finish(self):
-
-        return
-
-
-
-class schemasChek(controlClass):
-
-    def __init__(self, data):
-        
-        return
-
-    def start(self):
-
-        return
-
-    def finish(self):
-
-        return
 """
 
 """
@@ -208,374 +146,424 @@ def main():
     except Exception as e:
         print(f"Error in main function: {str(e)}")
 
+def controlDatabase(check: controlClass):
+
+    check.start()
+    while( not check.finish()):
+        print("controllo in corso")
+
+
 # display a bar that shows the progress of the process
 def print_process_status():
-    bar = IncrementalBar(suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s] (%(iter_value)s)', color='blue', max=100)
-    for i in bar.iter(range(200)):
-        time.sleep(0.01)
-    
-
-"""
-    Creates a report file and zips it, returning the path to the zipped report.
-    
-    Args:
-        report_file_name (str): The name of the report file to create.
-        db_conn (sqlite3.Connection): The database connection to use for updating the report status.
-    
-    Returns:
-        str: The path to the zipped report file, or None if an error occurred.
-"""
-def create_report(report_file_name, db_conn):
-
-    try:
-        if not path.exists("Evaluation"):
-            makedirs("Evaluation")
-        chdir("Evaluation") 
-        test_file_path = f"{report_file_name}.txt"
-        flags = O_CREAT | O_WRONLY  # Create file if it doesn't exist, open for writing
-        mode = 0o666  # Permissions for the file
-        fd = open(test_file_path, flags, mode)
-        write(fd, b"TEST - discrepancies test")
-        close(fd)
-        return zip_report(test_file_path, db_conn)
-    except Exception as e:
-        print(f"Error creating report: {str(e)}")
-        return None
+        bar = IncrementalBar(suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s] (%(iter_value)s)', color='blue', max=100)
+        for i in bar.iter(range(200)):
+            time.sleep(0.01)
 
 
-"""
-Creates a zip file from the specified report file and removes the original report file.
 
-Args:
-    report_path (str): The path to the report file to be zipped.
-    db_conn (sqlite3.Connection): The database connection to use for updating the report status.
+class controlClass(ABC):
 
-Returns:
-    str or list: The path to the zipped report file, or a list of chunked file paths if the zipped file exceeds the maximum size.
-"""
-def zip_report(report_path, db_conn):
-
-    try:
-        zip_path = report_path.replace(".txt", ".zip")
-        with ZipFile(zip_path, "x") as zip:
-            zip.write(report_path, compresslevel=9)
-        remove(report_path)
-        return asses_dimensions(zip_path=zip_path, connector=db_conn)
-    except Exception as e:
-        print(f"Error zipping report: {str(e)}")
-        return None
-
-
-"""
-Assesses the size of the zipped report file and determines if it needs to be split into smaller chunks.
-
-Args:
-    zip_path (str): The path to the zipped report file.
-    connector: The database connection to use for updating the report status.
-
-Returns:
-    list: A list of file paths for the zipped report or its chunks.
-"""
-def asses_dimensions(zip_path: str, connector):
-
-    try:
-        # Constants
-        CHUNK_SIZE = 150 * 1024 * 1024  # 150MB in bytes
-        MAX_SIZE = 300 * 1024 * 1024  # 300MB in bytes
+    @abstractmethod
+    def __init__(self, data):
         
-        # Check the size of the file
-        file_size = path.getsize(zip_path)
-        
-        # If file is smaller than or equal to 300MB, no need to chunk
-        if file_size <= MAX_SIZE:
-            update_report_status(zip_path[:-4], "REPORT ZIP CREATED", connector)
-            return [zip_path]  # Return original file path
-        
-        # Split into chunks if file is larger than 300MB
-        file_parts = []
-        with open(zip_path, 'rb') as f:
-            total_parts = ceil(file_size / CHUNK_SIZE)
-            base_name, ext = path.splitext(zip_path)
-            
-            for i in range(total_parts):
-                part_file_path = f"{base_name}_part_{i + 1}{ext}"
-                with open(part_file_path, 'wb') as chunk_file:
-                    chunk_data = f.read(CHUNK_SIZE)
-                    if chunk_data:
-                        print(chunk_data)
-                        chunk_file.write(chunk_data)
-                        file_parts.append(part_file_path)
-        update_report_status(zip_path[:-4], "MULTIPLE REPORT ZIP CREATED", connector)
-        return file_parts
-    except Exception as e:
-        print(f"Error assessing dimensions: {str(e)}")
-        return None
-
-"""
-Updates the processing status of a report in the database.
-
-Args:
-    report_name (str): The name of the report to update.
-    status (str): The new status to set for the report.
-    db_conn (sqlite3.Connection): The database connection to use for the update.
-
-Returns:
-    None
-"""
-def update_report_status(report_name: str, status: str, db_conn) -> None:
-
-    try:
-        cursor = db_conn.cursor()
-
-        cursor.execute('''
-            SELECT name FROM sqlite_master WHERE type='table';
-                       ''')
-        
-        cursor.execute("""
-            UPDATE reports
-                SET processing_status = :status 
-                    WHERE report_name = :report_name
-                    """, {
-                            'status': status,
-                            'report_name': report_name
-                            })
-        db_conn.commit()
-        print(f"Report {report_name} status updated to {status}")
-
-    except Exception as e:
-        print(f"Error updating report status: {str(e)}")
-
-"""
-    Registers a report and its associated discrepancies in the database.
-
-    This method inserts a new report entry into the reports table and 
-    records any discrepancies associated with that report in the discrepancies table. 
-    It handles database connection errors and ensures that changes are committed or rolled back as necessary.
-
-    Args:
-        discrepant_values (list): A list of discrepancies to be recorded, where each discrepancy is expected to be a list or tuple containing relevant data.
-        report_file_name (str): The name of the report being registered.
-        db_conn (sqlite3.Connection): The database connection to use for executing SQL commands.
-
-    Returns:
-        None
-"""
-def register_reports(discrepant_values, report_file_name, db_conn):
-    try:
-        cursor = db_conn.cursor()
-    except Exception as e:
-        print(f"Error connecting to db: {str(e)}")
-        if db_conn:
-            db_conn.rollback()
         return
 
-    try:
-        processing_status = "REPORT TO BE GENERATED"
+    @abstractmethod
+    def start(self):
+
+        return
+
+    @abstractmethod
+    def finish(self):
+
+        return
+
+
+class controlFactory:
+
+    def __init__(self, controlName : controlClass):
+        self.control = controlName
     
-        # Create the reports table if it doesn't exist
-        cursor.execute('''
-        INSERT INTO reports (report_name, processing_status, created_at)
-        VALUES (:report_name, :processing_status, :created_at)
-        ''', {
-            'report_name': report_file_name,
-            'processing_status': processing_status,
-            'created_at': datetime.now().strftime('%d_%m_%Y-%H_%M_%S'),
-        })
+    def instance_control(self, data):
+        Control = self.control(data)
+        return Control
 
-        report_id = cursor.lastrowid
-
-        for row in discrepant_values:
-            cursor.execute('''
-            INSERT INTO discrepancies (db, "table", "column", value, discrepancy, report_id)
-            VALUES (:db, :table, :column, :value, :discrepancy, :report_id)
-            ''', {
-                'db': row[0],
-                'table': row[1],
-                'column': row[2],
-                'value': row[3],
-                'discrepancy': f'effettivo {row[3]} != atteso {row[4]}',
-                'report_id': report_id
-            })
-
-        db_conn.commit()
-    except Exception as e:
-        print(f"Error registering reports: {str(e)}")
-        if db_conn:
-            db_conn.rollback()
-
-
-"""
-Backs up the zipped report files to a designated backup directory.
-
-This method checks if the backup directory exists, creates it if it doesn't, 
-and then copies the provided report zip files to this directory. 
-It also updates the status of each report in the database to indicate that 
-it has been backed up.
-
-Args:
-    reports_zip_path (list): A list of paths to the zipped report files to be backed up.
-    db_conn (sqlite3.Connection): The database connection to use for updating the report status.
-
-Returns:
-    None
-"""
-def backup_report(reports_zip_path, db_conn):
-
-    # Create the reports backup directory if it doesn't exist
-    if not path.exists("Evaluation/backup"):
-        makedirs("Evaluation/backup")
     
-    # Add the file to the backup directory
-    for report_zip_path in reports_zip_path:
-        copy(report_zip_path, "Evaluation/backup")
-        if len(reports_zip_path) == 1:
-            update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP", db_conn)
-        elif len(reports_zip_path) > 1:
-            update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP", db_conn)
-    
-    db_conn.close()
-    return
+class ransomChek(controlClass):
+
+    def __init__(self, data):
+        
+        return
+
+    def start(self):
+
+        return
+
+    def finish(self):
+
+        return
+
+    """
+        Creates a report file and zips it, returning the path to the zipped report.
+        
+        Args:
+            report_file_name (str): The name of the report file to create.
+            db_conn (sqlite3.Connection): The database connection to use for updating the report status.
+        
+        Returns:
+            str: The path to the zipped report file, or None if an error occurred.
+    """
+    def create_report(self, report_file_name, db_conn):
+
+        try:
+            if not path.exists("Evaluation"):
+                makedirs("Evaluation")
+            chdir("Evaluation") 
+            test_file_path = f"{report_file_name}.txt"
+            flags = O_CREAT | O_WRONLY  # Create file if it doesn't exist, open for writing
+            mode = 0o666  # Permissions for the file
+            fd = open(test_file_path, flags, mode)
+            write(fd, b"TEST - discrepancies test")
+            close(fd)
+            return self.zip_report(test_file_path, db_conn)
+        except Exception as e:
+            print(f"Error creating report: {str(e)}")
+            return None
 
 
-"""
-    Sends an email alert with the specified report attachments.
-
-    This method establishes an SMTP connection to the specified domain, 
-    logs in using the provided credentials, and sends an email containing 
-    the specified report files as attachments. It updates the status of 
-    each report in the database after sending.
+    """
+    Creates a zip file from the specified report file and removes the original report file.
 
     Args:
-        domain (str): The SMTP server domain.
-        username (str): The username for SMTP authentication.
-        pwd (str): The password for SMTP authentication.
-        reports_path (list): A list of paths to the report files to be attached.
-        sender (str): The email address of the sender.
-        receivers (List[str]): A list of email addresses to send the alert to.
+        report_path (str): The path to the report file to be zipped.
+        db_conn (sqlite3.Connection): The database connection to use for updating the report status.
+
+    Returns:
+        str or list: The path to the zipped report file, or a list of chunked file paths if the zipped file exceeds the maximum size.
+    """
+    def zip_report(self, report_path, db_conn):
+
+        try:
+            zip_path = report_path.replace(".txt", ".zip")
+            with ZipFile(zip_path, "x") as zip:
+                zip.write(report_path, compresslevel=9)
+            remove(report_path)
+            return self.asses_dimensions(zip_path=zip_path, connector=db_conn)
+        except Exception as e:
+            print(f"Error zipping report: {str(e)}")
+            return None
+
+
+    """
+    Assesses the size of the zipped report file and determines if it needs to be split into smaller chunks.
+
+    Args:
+        zip_path (str): The path to the zipped report file.
         connector: The database connection to use for updating the report status.
 
     Returns:
-        None
-"""
+        list: A list of file paths for the zipped report or its chunks.
+    """
+    def asses_dimensions(self, zip_path: str, connector):
 
-def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: list[str], connector) -> None:
-
-    with SMTP(domain) as mail_server:
-        # Start TLS for security
-        mail_server.starttls()
-        mail_server.login(username, pwd)
-        
-        for report in reports_path: 
-            content = add_content(report)  # Prepare the email content with the report attachment
-            mail_server.send_message(content, sender, receivers)  # Send the email
+        try:
+            # Constants
+            CHUNK_SIZE = 150 * 1024 * 1024  # 150MB in bytes
+            MAX_SIZE = 300 * 1024 * 1024  # 300MB in bytes
             
-            # Update the report status in the database
-            if len(reports_path) == 1:
-                update_report_status(report[:-4], f"REPORT SENT", connector)
-            elif len(reports_path) > 1:
-                update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT", connector)
-    
-    return
+            # Check the size of the file
+            file_size = path.getsize(zip_path)
+            
+            # If file is smaller than or equal to 300MB, no need to chunk
+            if file_size <= MAX_SIZE:
+                self.update_report_status(zip_path[:-4], "REPORT ZIP CREATED", connector)
+                return [zip_path]  # Return original file path
+            
+            # Split into chunks if file is larger than 300MB
+            file_parts = []
+            with open(zip_path, 'rb') as f:
+                total_parts = ceil(file_size / CHUNK_SIZE)
+                base_name, ext = path.splitext(zip_path)
+                
+                for i in range(total_parts):
+                    part_file_path = f"{base_name}_part_{i + 1}{ext}"
+                    with open(part_file_path, 'wb') as chunk_file:
+                        chunk_data = f.read(CHUNK_SIZE)
+                        if chunk_data:
+                            print(chunk_data)
+                            chunk_file.write(chunk_data)
+                            file_parts.append(part_file_path)
+            self.update_report_status(zip_path[:-4], "MULTIPLE REPORT ZIP CREATED", connector)
+            return file_parts
+        except Exception as e:
+            print(f"Error assessing dimensions: {str(e)}")
+            return None
 
-"""
-Prepares the email content for the alert, including the report attachment.
+    """
+    Updates the processing status of a report in the database.
 
-This method creates an email message indicating a potential ransomware attack, 
-includes the current date and time, and attaches the specified report file.
+    Args:
+        report_name (str): The name of the report to update.
+        status (str): The new status to set for the report.
+        db_conn (sqlite3.Connection): The database connection to use for the update.
 
-Args:
-    report_attach (str): The path to the report file to be attached.
+    Returns:
+        None
+    """
+    def update_report_status(report_name: str, status: str, db_conn) -> None:
 
-Returns:
-    EmailMessage: The prepared email message with the report attachment.
-"""
-def add_content(report_attach: str) -> EmailMessage:
+        try:
+            cursor = db_conn.cursor()
 
-    alertDate = datetime.now().strftime('%d_%m_%Y-%H_%M_%S')
-    alert = EmailMessage()
-    alert["Subject"] = f"Ransomware attack detected: Start Fast Recovery"
-    alert["Content-Type"] = f"text/plain"  # Set content type to plain text
-    
-    # Set the content of the email
-    alert.set_content(f"""
-        Dear Administrator,
+            cursor.execute('''
+                SELECT name FROM sqlite_master WHERE type='table';
+                        ''')
+            
+            cursor.execute("""
+                UPDATE reports
+                    SET processing_status = :status 
+                        WHERE report_name = :report_name
+                        """, {
+                                'status': status,
+                                'report_name': report_name
+                                })
+            db_conn.commit()
+            print(f"Report {report_name} status updated to {status}")
 
-        Our system has detected a potential ransomware attack on the application.
-        Immediate action is required to prevent data loss and further damage.
+        except Exception as e:
+            print(f"Error updating report status: {str(e)}")
+
+    """
+        Registers a report and its associated discrepancies in the database.
+
+        This method inserts a new report entry into the reports table and 
+        records any discrepancies associated with that report in the discrepancies table. 
+        It handles database connection errors and ensures that changes are committed or rolled back as necessary.
+
+        Args:
+            discrepant_values (list): A list of discrepancies to be recorded, where each discrepancy is expected to be a list or tuple containing relevant data.
+            report_file_name (str): The name of the report being registered.
+            db_conn (sqlite3.Connection): The database connection to use for executing SQL commands.
+
+        Returns:
+            None
+    """
+    def register_reports(discrepant_values, report_file_name, db_conn):
+        try:
+            cursor = db_conn.cursor()
+        except Exception as e:
+            print(f"Error connecting to db: {str(e)}")
+            if db_conn:
+                db_conn.rollback()
+            return
+
+        try:
+            processing_status = "REPORT TO BE GENERATED"
         
-        Detected at: {alertDate}
-        In the attached document you can find further information regarding data discrepancies detected.                      
-        Please investigate the issue promptly and take necessary measures to mitigate the attack.
-        If the revealed discrepancies are critical, start delphix Fast Recovery process of the affected Databases.
+            # Create the reports table if it doesn't exist
+            cursor.execute('''
+            INSERT INTO reports (report_name, processing_status, created_at)
+            VALUES (:report_name, :processing_status, :created_at)
+            ''', {
+                'report_name': report_file_name,
+                'processing_status': processing_status,
+                'created_at': datetime.now().strftime('%d_%m_%Y-%H_%M_%S'),
+            })
 
-        Best regards,
-                            
-        Ransomware Detection System
-    """)
-    
-    # Attach the report file
-    with open(report_attach, 'rb') as zip_file:
-        alert.add_attachment(zip_file.read(), maintype="application", subtype="zip", filename=report_attach[11:])
-    
-    return alert
+            report_id = cursor.lastrowid
 
+            for row in discrepant_values:
+                cursor.execute('''
+                INSERT INTO discrepancies (db, "table", "column", value, discrepancy, report_id)
+                VALUES (:db, :table, :column, :value, :discrepancy, :report_id)
+                ''', {
+                    'db': row[0],
+                    'table': row[1],
+                    'column': row[2],
+                    'value': row[3],
+                    'discrepancy': f'effettivo {row[3]} != atteso {row[4]}',
+                    'report_id': report_id
+                })
 
-"""
-Evaluates discrepancies in the database by executing a SQL query.
-
-This method connects to the specified Oracle database using the provided credentials, 
-executes a query to retrieve discrepancies between expected and actual values, 
-and returns the result set.
-
-Args:
-    db_hostname (str): The hostname of the database.
-    db_port (str): The port of the database.
-    username (str): The username to connect to the database.
-    pwd (str): The password to connect to the database.
-    sid (str): The SID (System Identifier) of the database.
-
-Returns:
-    ResultSet: The result set containing discrepancies between expected and actual values.
-"""
-def evaluate(db_hostname, db_port, username, pwd, sid):
-
-    start_time = datetime.now()
-    vdb_conn = oracledb.connect(host=db_hostname, port=db_port, user=username, password=pwd, sid=sid)
-    curs = vdb_conn.cursor()
-
-    rs = curs.execute("SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO FROM \
-                      ( SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO, \
-        CASE WHEN CAST(result AS VARCHAR(200)) = RES_ATTESO THEN 1 ELSE 0 END AS EVALUATION \
-            FROM CHECK_BASE CB LEFT JOIN ( \
-            WITH numbers AS( \
-                SELECT LEVEL AS n \
-                FROM DUAL \
-                CONNECT BY LEVEL <= 1000) \
-                SELECT ID, DATABASE_ID, TABLE_ID, COLUMN_ID, REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, '\"(\w+|\d+)\":', 1, n), '(\w+|\d+)') as chiavi, \
-                    REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, ':\"(\w+|\d+)\"[,}]', 1, n), '(\w+|\d+)') as result \
-                    FROM CHECK_2, numbers \
-                    WHERE  n <= REGEXP_COUNT(RESULT, '\"(\w+|\d+)\":')  \
-                    ORDER BY ID, n ) CR ON CB.VALUE = CAST(CR.chiavi AS VARCHAR(200)) \
-                                                LEFT JOIN CHECK_LINK CL ON CB.ID = CL.ID_BASE \
-                                                    JOIN CHECK_VIEW_2 CV2 ON CL.ID_CHECK = CV2.ID) WHERE EVALUATION = 0")
-    
-    end_time = datetime.now()
-    print(f"Discrepancies evaluation finished in {end_time - start_time}")
-
-    return rs
+            db_conn.commit()
+        except Exception as e:
+            print(f"Error registering reports: {str(e)}")
+            if db_conn:
+                db_conn.rollback()
 
 
     """
-    try:
-        completedProcess = subprocess.run(["bash", "resultsControl.sh", db_hostname, db_port, username, pwd, sid], capture_output=True, check=True, text=True)
-    except subprocess.CalledProcessError as e: # check option - non-zero returncode -> exc CalledProcessError
-            print('Error occurred :' + e.stdout + '\n' + e.stderr)
-    if(completedProcess.stdout): # se shell process ha scritto in stdout ci sono delle discrepanze
-        # altro modo è fare ritornare un particolare return code e alzare eccezione solo se return-code = 1 o altri valori sbagliati noti
-        return 0
-    else:
-        return 1
+    Backs up the zipped report files to a designated backup directory.
+
+    This method checks if the backup directory exists, creates it if it doesn't, 
+    and then copies the provided report zip files to this directory. 
+    It also updates the status of each report in the database to indicate that 
+    it has been backed up.
+
+    Args:
+        reports_zip_path (list): A list of paths to the zipped report files to be backed up.
+        db_conn (sqlite3.Connection): The database connection to use for updating the report status.
+
+    Returns:
+        None
     """
+    def backup_report(reports_zip_path, db_conn):
+
+        # Create the reports backup directory if it doesn't exist
+        if not path.exists("Evaluation/backup"):
+            makedirs("Evaluation/backup")
+        
+        # Add the file to the backup directory
+        for report_zip_path in reports_zip_path:
+            copy(report_zip_path, "Evaluation/backup")
+            if len(reports_zip_path) == 1:
+                update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP", db_conn)
+            elif len(reports_zip_path) > 1:
+                update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP", db_conn)
+        
+        db_conn.close()
+        return
+
+
+    """
+        Sends an email alert with the specified report attachments.
+
+        This method establishes an SMTP connection to the specified domain, 
+        logs in using the provided credentials, and sends an email containing 
+        the specified report files as attachments. It updates the status of 
+        each report in the database after sending.
+
+        Args:
+            domain (str): The SMTP server domain.
+            username (str): The username for SMTP authentication.
+            pwd (str): The password for SMTP authentication.
+            reports_path (list): A list of paths to the report files to be attached.
+            sender (str): The email address of the sender.
+            receivers (List[str]): A list of email addresses to send the alert to.
+            connector: The database connection to use for updating the report status.
+
+        Returns:
+            None
+    """
+
+    def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: list[str], connector) -> None:
+
+        with SMTP(domain) as mail_server:
+            # Start TLS for security
+            mail_server.starttls()
+            mail_server.login(username, pwd)
+            
+            for report in reports_path: 
+                content = add_content(report)  # Prepare the email content with the report attachment
+                mail_server.send_message(content, sender, receivers)  # Send the email
+                
+                # Update the report status in the database
+                if len(reports_path) == 1:
+                    update_report_status(report[:-4], f"REPORT SENT", connector)
+                elif len(reports_path) > 1:
+                    update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT", connector)
+        
+        return
+
+    """
+    Prepares the email content for the alert, including the report attachment.
+
+    This method creates an email message indicating a potential ransomware attack, 
+    includes the current date and time, and attaches the specified report file.
+
+    Args:
+        report_attach (str): The path to the report file to be attached.
+
+    Returns:
+        EmailMessage: The prepared email message with the report attachment.
+    """
+    def add_content(report_attach: str) -> EmailMessage:
+
+        alertDate = datetime.now().strftime('%d_%m_%Y-%H_%M_%S')
+        alert = EmailMessage()
+        alert["Subject"] = f"Ransomware attack detected: Start Fast Recovery"
+        alert["Content-Type"] = f"text/plain"  # Set content type to plain text
+        
+        # Set the content of the email
+        alert.set_content(f"""
+            Dear Administrator,
+
+            Our system has detected a potential ransomware attack on the application.
+            Immediate action is required to prevent data loss and further damage.
+            
+            Detected at: {alertDate}
+            In the attached document you can find further information regarding data discrepancies detected.                      
+            Please investigate the issue promptly and take necessary measures to mitigate the attack.
+            If the revealed discrepancies are critical, start delphix Fast Recovery process of the affected Databases.
+
+            Best regards,
+                                
+            Ransomware Detection System
+        """)
+        
+        # Attach the report file
+        with open(report_attach, 'rb') as zip_file:
+            alert.add_attachment(zip_file.read(), maintype="application", subtype="zip", filename=report_attach[11:])
+        
+        return alert
+
+
+    """
+    Evaluates discrepancies in the database by executing a SQL query.
+
+    This method connects to the specified Oracle database using the provided credentials, 
+    executes a query to retrieve discrepancies between expected and actual values, 
+    and returns the result set.
+
+    Args:
+        db_hostname (str): The hostname of the database.
+        db_port (str): The port of the database.
+        username (str): The username to connect to the database.
+        pwd (str): The password to connect to the database.
+        sid (str): The SID (System Identifier) of the database.
+
+    Returns:
+        ResultSet: The result set containing discrepancies between expected and actual values.
+    """
+    def evaluate(db_hostname, db_port, username, pwd, sid):
+
+        start_time = datetime.now()
+        vdb_conn = oracledb.connect(host=db_hostname, port=db_port, user=username, password=pwd, sid=sid)
+        curs = vdb_conn.cursor()
+
+        rs = curs.execute("SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO FROM \
+                        ( SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO, \
+            CASE WHEN CAST(result AS VARCHAR(200)) = RES_ATTESO THEN 1 ELSE 0 END AS EVALUATION \
+                FROM CHECK_BASE CB LEFT JOIN ( \
+                WITH numbers AS( \
+                    SELECT LEVEL AS n \
+                    FROM DUAL \
+                    CONNECT BY LEVEL <= 1000) \
+                    SELECT ID, DATABASE_ID, TABLE_ID, COLUMN_ID, REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, '\"(\w+|\d+)\":', 1, n), '(\w+|\d+)') as chiavi, \
+                        REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, ':\"(\w+|\d+)\"[,}]', 1, n), '(\w+|\d+)') as result \
+                        FROM CHECK_2, numbers \
+                        WHERE  n <= REGEXP_COUNT(RESULT, '\"(\w+|\d+)\":')  \
+                        ORDER BY ID, n ) CR ON CB.VALUE = CAST(CR.chiavi AS VARCHAR(200)) \
+                                                    LEFT JOIN CHECK_LINK CL ON CB.ID = CL.ID_BASE \
+                                                        JOIN CHECK_VIEW_2 CV2 ON CL.ID_CHECK = CV2.ID) WHERE EVALUATION = 0")
+        
+        end_time = datetime.now()
+        print(f"Discrepancies evaluation finished in {end_time - start_time}")
+
+        return rs
+
+
+        """
+        try:
+            completedProcess = subprocess.run(["bash", "resultsControl.sh", db_hostname, db_port, username, pwd, sid], capture_output=True, check=True, text=True)
+        except subprocess.CalledProcessError as e: # check option - non-zero returncode -> exc CalledProcessError
+                print('Error occurred :' + e.stdout + '\n' + e.stderr)
+        if(completedProcess.stdout): # se shell process ha scritto in stdout ci sono delle discrepanze
+            # altro modo è fare ritornare un particolare return code e alzare eccezione solo se return-code = 1 o altri valori sbagliati noti
+            return 0
+        else:
+            return 1
+        """
 
 
 
