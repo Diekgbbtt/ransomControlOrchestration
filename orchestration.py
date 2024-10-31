@@ -9,7 +9,6 @@ TO DO:
     -   handle worst case scenarios
         -X valutare dimensione report e chuking se supera limite (dimensione email - x MB) -> invio di più mail, con ogni mail che indichi solo discrepanza rilevata alla tabella x colonna y
         -X creare livello persistente semplice con sqlLite che fornisca un log dei report e il loro stato di invio, in modo tale che se la mail non venga inviata, si può agire manualemente
-        - add tech agnostic module
         - timing with completion bars
         -X costrutti try-catch
         - testing
@@ -20,6 +19,8 @@ TO DO:
 """
 
 """
+        Strutture Dati tabelle reports e discrepancies
+    
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         report_name VARCHAR(255) NOT NULL,
         processing_status VARCHAR(255) NOT NULL,
@@ -38,55 +39,52 @@ TO DO:
 
 
 # third party modules
-import requests
-import smtplib
+from requests import packages, Session
+from smtplib import SMTP
 import oracledb
 from email.message import EmailMessage
-# from db_techagnostic_connector import DBConnector
-# import subprocess - for future parallel support
 
 # standard library modules
-import sys
-import warnings
-import urllib3
-import json
-import os
-import math
-import shutil
-# import threading
+from sys import stdout
+from warnings import simplefilter
+from urllib3 import disable_warnings, exceptions
+from json import load as json_load
+from os import remove, chdir, makedirs, path, write, close, open, O_CREAT, O_WRONLY
+from math import ceil
+from shutil import copy
 import time
-from dateutil import parser
+from dateutil import parser # type: ignore
 from datetime import datetime
-import zipfile
-from typing import List
-import sqlite3
+from zipfile import ZipFile
+from sqlite3 import connect, Connection
 
 
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # needed to suppress warnings
-warnings.simplefilter('ignore')
-requests.packages.urllib3.disable_warnings()
+disable_warnings(exceptions.InsecureRequestWarning)  # needed to suppress warnings
+simplefilter('ignore')
+packages.urllib3.disable_warnings()
 
 oracledb.defaults.fetch_lobs = False
-"""
-CLOBs and BLOBs smaller than 1 GB can queried from the database directly as strings and bytes. 
-This can be much faster than streaming a LOB Object. Support is enabled by setting the Defaults Object.
-"""
 
 """"
 
-******* QUERY CATALOGO CON DB,TB, CLN E CONTROLLI *********
+*****************************************************************************************************************
+*   possibile implmentazione di una maggirore estrazione del controllo con design pattern                       *
+*   factory method, nell'ottica di effettuare controli di diverso tipo utilizando sempre delphix come engine    *
+*****************************************************************************************************************
+
+A PRIORI E' NECESSARIA UNA QUERY A CATALOGO CON DB,TB, CLN E RELATIVI CONTROLLI
 
 
 for(row : results)
     controlName = row.getcolumn(x)
-    controlData = row.getmultiplecolumns....
+    controlData = row.getmultiplecolumns.... + data elaborations needed
     factory = controlFactory(controlName)
-    controlDatabase(factory.istance_control(data))
+    controlDatabase(factory.istance_control(controlData))
 
 
 
-def controlDatabase(controlClass):
+def controlDatabase(check: controlClass):
 
     check.start()
     while( not check.finish()):
@@ -95,13 +93,12 @@ def controlDatabase(controlClass):
 
 class controlFactory:
 
-    def __init__(self, controlName):
+    def __init__(self, controlName : controlClass):
         self.control = controlName
     
-    def istance_control(self, data):
+    def instance_control(self, data):
         Control = self.control(data)
         return Control
-
 
 
 class controlClass:
@@ -152,97 +149,31 @@ class schemasChek(controlClass):
         return
 """
 
-class ApiObject:
-    def __init__(self, dictionary):
-        for key, value in dictionary.items():
-            if isinstance(value, dict): # controlla se value associato alla chiave corrente è un dizionario
-                try:
-                    klass = globals()[key.capitalize()]
-                    setattr(self, key, klass(value))
-                except:
-                    setattr(self, key, value)
-            else:
-                setattr(self, key, value)
-# la risposta json presenta dei dati in formato key:value, quindi può essere modellata come un dizionario
-# si può dire che questa classe crea dinamicamente degli oggetti con atrtibuti e relativi valori corrispondenti
-# alle coppi chiave valore nella risposta json. In particolare controlla se una chiave corrisponde ad una classs
-# globals()[key.capitalize()], quindi ad un altro dizionario(coppie attributi:valore) in caso positivo prova ad 
-# istanziare un oggetto della classe setattr(self, key, klass(value))
-
-
-class Database(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-    @property
-    def masked_status(self):
-        if self.masked:
-            return 'MASKED DB'
-        return 'CLEAR DB'
-
-
-class Capacity(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
-
-    @property
-    def actual_space(self):
-        actual_space = self.breakdown.actualSpace
-        return actual_space
-
-    @property
-    def ingested_size(self):
-        ingested_size = self.breakdown.ingestedSize
-        return ingested_size
 """
-It inherits from the ApiObject class, which likely handles the conversion of API response data into Python objects.
-b. The __init__ method is called when creating a new instance of the Capacity class. It takes a dictionary as input and passes it to the ApiObject class's __init__ method using super().__init__(dictionary).
-c. The @property decorator is used to define two methods (actual_space and ingested_size) as properties, allowing them to be accessed like attributes.
-d. The actual_space property retrieves the value of actualSpace from the breakdown attribute, which is likely another object representing the breakdown of capacity.
-e. The ingested_size property retrieves the value of ingestedSize from the breakdown attribute. #
+if(len(sys.argv) < 3):
+    print("Utilizzo : py dpx_integration.py <replication_spec> <vdbContainer_ref> <dSourceContainer_ref>")
+    sys.exit(1)
 """
 
-class Source(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
+"""
+Evaluates the discrepancies between the expected and actual values in the database.
 
-    @property
-    def actual_size(self):
-        actual_size = self.runtime.databaseSize
-        return actual_size
+This function connects to the database using the provided credentials, and then executes a SQL query to retrieve the discrepancies between the expected and actual values. The function returns the result set containing the discrepancies.
 
-    @property
-    def db_type(self):
-        db_type = "Source"
-        if self.virtual:
-            db_type = "VDB"
-        return db_type
+Args:
+    db_hostname (str): The hostname of the database.
+    db_port (str): The port of the database.
+    username (str): The username to connect to the database.
+    pwd (str): The password to connect to the database.
+    sid (str): The SID (System Identifier) of the database.
 
-
-
-class Repository(ApiObject):
-    def __init__(self, dictionary):
-        super().__init__(dictionary)
- 
-    @property
-    def technology(self):
-        technology = self.type
-        if self.version:
-            technology += f" - v{self.version}"
-        else:
-            technology = self.name
-        return technology
-
-        """
-        if(len(sys.argv) < 3):
-            print("Utilizzo : py dpx_integration.py <replication_spec> <vdbContainer_ref> <dSourceContainer_ref>")
-            sys.exit(1)
-        """
-
+Returns:
+    A result set containing the discrepancies between the expected and actual values in the database.
+"""
 def main():
     try:
         with open('config.json', 'r') as cfg:
-            cfg_dict = json.load(cfg)
+            cfg_dict = json_load(cfg)
 
         for rep in cfg_dict.get('Replications'):
             try:
@@ -265,7 +196,7 @@ def main():
 
                 if(discrepant_values):
                     report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
-                    db_conn = sqlite3.connect('reports.db')
+                    db_conn = connect('reports.db')
                     register_reports(discrepant_values, report_file_name, db_conn)
                     reports_zip_path = create_report(report_file_name, db_conn) # zip the new discrepancies file
                     send_alert(domain=cfg_dict.get('mail')['smtpServer'], username=cfg_dict.get('mail')['usr'], pwd=cfg_dict.get('mail')['pwd'], reports_path=reports_zip_path, sender=cfg_dict.get('mail')['usr'], receivers=rep['mailReceivers'], connector=db_conn)
@@ -276,48 +207,84 @@ def main():
     except Exception as e:
         print(f"Error in main function: {str(e)}")
 
+# display a bar that shows the progress of the process
 def print_process_status():
-    sys.stdout.write('.')
-    sys.stdout.flush()
+    stdout.write('.')
+    stdout.flush()
     time.sleep(2)
-    sys.stdout.write('\b \b' * 3)  # Erase the last three dots
+    stdout.write('\b \b' * 3)  # Erase the last three dots
     return
 
+"""
+    Creates a report file and zips it, returning the path to the zipped report.
+    
+    Args:
+        report_file_name (str): The name of the report file to create.
+        db_conn (sqlite3.Connection): The database connection to use for updating the report status.
+    
+    Returns:
+        str: The path to the zipped report file, or None if an error occurred.
+"""
 def create_report(report_file_name, db_conn):
+
     try:
-        if not os.path.exists("Evaluation"):
-            os.makedirs("Evaluation")
-        os.chdir("Evaluation") 
+        if not path.exists("Evaluation"):
+            makedirs("Evaluation")
+        chdir("Evaluation") 
         test_file_path = f"{report_file_name}.txt"
-        flags = os.O_CREAT | os.O_WRONLY  # Create file if it doesn't exist, open for writing
+        flags = O_CREAT | O_WRONLY  # Create file if it doesn't exist, open for writing
         mode = 0o666  # Permissions for the file
-        fd = os.open(test_file_path, flags, mode)
-        os.write(fd, b"TEST - discrepancies test")
-        os.close(fd)
+        fd = open(test_file_path, flags, mode)
+        write(fd, b"TEST - discrepancies test")
+        close(fd)
         return zip_report(test_file_path, db_conn)
     except Exception as e:
         print(f"Error creating report: {str(e)}")
         return None
 
+
+"""
+Creates a zip file from the specified report file and removes the original report file.
+
+Args:
+    report_path (str): The path to the report file to be zipped.
+    db_conn (sqlite3.Connection): The database connection to use for updating the report status.
+
+Returns:
+    str or list: The path to the zipped report file, or a list of chunked file paths if the zipped file exceeds the maximum size.
+"""
 def zip_report(report_path, db_conn):
+
     try:
         zip_path = report_path.replace(".txt", ".zip")
-        with zipfile.ZipFile(zip_path, "x") as zip:
+        with ZipFile(zip_path, "x") as zip:
             zip.write(report_path, compresslevel=9)
-        os.remove(report_path)
+        remove(report_path)
         return asses_dimensions(zip_path=zip_path, connector=db_conn)
     except Exception as e:
         print(f"Error zipping report: {str(e)}")
         return None
 
+
+"""
+Assesses the size of the zipped report file and determines if it needs to be split into smaller chunks.
+
+Args:
+    zip_path (str): The path to the zipped report file.
+    connector: The database connection to use for updating the report status.
+
+Returns:
+    list: A list of file paths for the zipped report or its chunks.
+"""
 def asses_dimensions(zip_path: str, connector):
+
     try:
         # Constants
         CHUNK_SIZE = 150 * 1024 * 1024  # 150MB in bytes
         MAX_SIZE = 300 * 1024 * 1024  # 300MB in bytes
         
         # Check the size of the file
-        file_size = os.path.getsize(zip_path)
+        file_size = path.getsize(zip_path)
         
         # If file is smaller than or equal to 300MB, no need to chunk
         if file_size <= MAX_SIZE:
@@ -327,8 +294,8 @@ def asses_dimensions(zip_path: str, connector):
         # Split into chunks if file is larger than 300MB
         file_parts = []
         with open(zip_path, 'rb') as f:
-            total_parts = math.ceil(file_size / CHUNK_SIZE)
-            base_name, ext = os.path.splitext(zip_path)
+            total_parts = ceil(file_size / CHUNK_SIZE)
+            base_name, ext = path.splitext(zip_path)
             
             for i in range(total_parts):
                 part_file_path = f"{base_name}_part_{i + 1}{ext}"
@@ -344,6 +311,17 @@ def asses_dimensions(zip_path: str, connector):
         print(f"Error assessing dimensions: {str(e)}")
         return None
 
+"""
+Updates the processing status of a report in the database.
+
+Args:
+    report_name (str): The name of the report to update.
+    status (str): The new status to set for the report.
+    db_conn (sqlite3.Connection): The database connection to use for the update.
+
+Returns:
+    None
+"""
 def update_report_status(report_name: str, status: str, db_conn) -> None:
 
     try:
@@ -367,6 +345,21 @@ def update_report_status(report_name: str, status: str, db_conn) -> None:
     except Exception as e:
         print(f"Error updating report status: {str(e)}")
 
+"""
+    Registers a report and its associated discrepancies in the database.
+
+    This method inserts a new report entry into the reports table and 
+    records any discrepancies associated with that report in the discrepancies table. 
+    It handles database connection errors and ensures that changes are committed or rolled back as necessary.
+
+    Args:
+        discrepant_values (list): A list of discrepancies to be recorded, where each discrepancy is expected to be a list or tuple containing relevant data.
+        report_file_name (str): The name of the report being registered.
+        db_conn (sqlite3.Connection): The database connection to use for executing SQL commands.
+
+    Returns:
+        None
+"""
 def register_reports(discrepant_values, report_file_name, db_conn):
     try:
         cursor = db_conn.cursor()
@@ -410,84 +403,142 @@ def register_reports(discrepant_values, report_file_name, db_conn):
         if db_conn:
             db_conn.rollback()
 
+
+"""
+Backs up the zipped report files to a designated backup directory.
+
+This method checks if the backup directory exists, creates it if it doesn't, 
+and then copies the provided report zip files to this directory. 
+It also updates the status of each report in the database to indicate that 
+it has been backed up.
+
+Args:
+    reports_zip_path (list): A list of paths to the zipped report files to be backed up.
+    db_conn (sqlite3.Connection): The database connection to use for updating the report status.
+
+Returns:
+    None
+"""
 def backup_report(reports_zip_path, db_conn):
-        # Create the reports backup directory if it doesn't exist
-        if not os.path.exists("Evaluation/backup"):
-            os.makedirs("Evaluation/backup")
-        # add the file to the backup directory
-        for report_zip_path in reports_zip_path:
-            shutil.copy(report_zip_path, "Evaluation/backup")
-            if(len(reports_zip_path) == 1):
-                update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP", db_conn)
-            elif(len(reports_zip_path) > 1):
-                update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP", db_conn)
-        db_conn.close()
-        return
 
-
-def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: List[str], connector) -> None:
-        """
-        An SMTP instance encapsulates an SMTP connection. It has methods that support a full repertoire of SMTP and ESMTP operations. 
-        If the optional host and port parameters are given, the SMTP connect() method is called with those parameters during initialization.
-        """
-        with smtplib.SMTP(domain) as mail_server:
-        # https://docs.python.org/3/library/smtplib.html#smtplib.SMTP
-            mail_server.starttls()
-            mail_server.login(username, pwd)
-            for report in reports_path: 
-                content = add_content(report)
-                mail_server.send_message(content, sender, receivers)
-                if(len(reports_path) == 1):
-                    update_report_status(report[:-4], f"REPORT SENT", connector)
-                elif(len(reports_path) > 1):
-                    update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT", connector)
-        # mail_server.close()
-        return
-
-def add_content(report_attach: str) -> None:
-        alertDate = datetime.now().strftime('%d_%m_%Y-%H_%M_%S')
-        alert = EmailMessage()
-        alert[""]=f"Ransomware attack detected : Start Fast Recovery"
-        alert["Content-Type"]=f"text/plain" # multipart/mixed         
-        alert.set_content(f"""
-            Dear Administrator,
-
-            Our system has detected a potential ransomware attack on the application.
-            Immediate action is required to prevent data loss and further damage.
-            
-            Detected at: {alertDate}
-            In the attached document you can find further information regarding data discrepancies detected.                      
-            Please investigate the issue promptly and take necessary measures to mitigate the attack.
-            If the revealed discrepancies are critical, start delphix Fast Recovery process of the affected Databases.
-
-            Best regards,
-                                
-            Ransomware Detection System
-                        """)
-        
-        """
-            'rb' stands for read bytes, data is read as raw bytes without applying encoding, hence special chars like newline are interpreted as they are, 
-            suitable for binary files like .jpg, .mp4, .exe
-            with 'r' Data is read as strings (decoded from the file's binary content into text using the default or specified encoding, typically UTF-8).
-            i.e. Line endings (\n in UNIX or \r\n in Windows) are translated to Python's universal newline character (\n).
-        """
-        # remove reports older than 7 days
-        # loop on files in Evaluation directory
-
-        with open(report_attach, 'rb' ) as zip_file: # encoding=get_encoding_type(file_path)
-            alert.add_attachment(zip_file.read(), maintype="application", subtype="zip", filename=report_attach[11:])
-        
-        """
-        If the message is a non-multipart, multipart/related, or multipart/alternative, call make_mixed() and then
-        create a new message object, pass all of the arguments to its set_content() method, and attach() it to the multipart
-        """
-        # https://docs.python.org/3/library/email.message.html#email.message.EmailMessage.add_attachment
-
-        return alert
-
-
-def evaluate(db_hostname, db_port, username, pwd, sid):
+    # Create the reports backup directory if it doesn't exist
+    if not path.exists("Evaluation/backup"):
+        makedirs("Evaluation/backup")
     
+    # Add the file to the backup directory
+    for report_zip_path in reports_zip_path:
+        copy(report_zip_path, "Evaluation/backup")
+        if len(reports_zip_path) == 1:
+            update_report_status(report_zip_path[:-4], "REPORT ZIP BACKED UP", db_conn)
+        elif len(reports_zip_path) > 1:
+            update_report_status(report_zip_path[:-4], f"REPORT ZIP PART {report_zip_path.split('_')[2].strip()[:-4]} BACKED UP", db_conn)
+    
+    db_conn.close()
+    return
+
+
+"""
+    Sends an email alert with the specified report attachments.
+
+    This method establishes an SMTP connection to the specified domain, 
+    logs in using the provided credentials, and sends an email containing 
+    the specified report files as attachments. It updates the status of 
+    each report in the database after sending.
+
+    Args:
+        domain (str): The SMTP server domain.
+        username (str): The username for SMTP authentication.
+        pwd (str): The password for SMTP authentication.
+        reports_path (list): A list of paths to the report files to be attached.
+        sender (str): The email address of the sender.
+        receivers (List[str]): A list of email addresses to send the alert to.
+        connector: The database connection to use for updating the report status.
+
+    Returns:
+        None
+"""
+
+def send_alert(domain: str, username: str, pwd: str, reports_path: str, sender: str, receivers: list[str], connector) -> None:
+
+    with SMTP(domain) as mail_server:
+        # Start TLS for security
+        mail_server.starttls()
+        mail_server.login(username, pwd)
+        
+        for report in reports_path: 
+            content = add_content(report)  # Prepare the email content with the report attachment
+            mail_server.send_message(content, sender, receivers)  # Send the email
+            
+            # Update the report status in the database
+            if len(reports_path) == 1:
+                update_report_status(report[:-4], f"REPORT SENT", connector)
+            elif len(reports_path) > 1:
+                update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT", connector)
+    
+    return
+
+"""
+Prepares the email content for the alert, including the report attachment.
+
+This method creates an email message indicating a potential ransomware attack, 
+includes the current date and time, and attaches the specified report file.
+
+Args:
+    report_attach (str): The path to the report file to be attached.
+
+Returns:
+    EmailMessage: The prepared email message with the report attachment.
+"""
+def add_content(report_attach: str) -> EmailMessage:
+
+    alertDate = datetime.now().strftime('%d_%m_%Y-%H_%M_%S')
+    alert = EmailMessage()
+    alert["Subject"] = f"Ransomware attack detected: Start Fast Recovery"
+    alert["Content-Type"] = f"text/plain"  # Set content type to plain text
+    
+    # Set the content of the email
+    alert.set_content(f"""
+        Dear Administrator,
+
+        Our system has detected a potential ransomware attack on the application.
+        Immediate action is required to prevent data loss and further damage.
+        
+        Detected at: {alertDate}
+        In the attached document you can find further information regarding data discrepancies detected.                      
+        Please investigate the issue promptly and take necessary measures to mitigate the attack.
+        If the revealed discrepancies are critical, start delphix Fast Recovery process of the affected Databases.
+
+        Best regards,
+                            
+        Ransomware Detection System
+    """)
+    
+    # Attach the report file
+    with open(report_attach, 'rb') as zip_file:
+        alert.add_attachment(zip_file.read(), maintype="application", subtype="zip", filename=report_attach[11:])
+    
+    return alert
+
+
+"""
+Evaluates discrepancies in the database by executing a SQL query.
+
+This method connects to the specified Oracle database using the provided credentials, 
+executes a query to retrieve discrepancies between expected and actual values, 
+and returns the result set.
+
+Args:
+    db_hostname (str): The hostname of the database.
+    db_port (str): The port of the database.
+    username (str): The username to connect to the database.
+    pwd (str): The password to connect to the database.
+    sid (str): The SID (System Identifier) of the database.
+
+Returns:
+    ResultSet: The result set containing discrepancies between expected and actual values.
+"""
+def evaluate(db_hostname, db_port, username, pwd, sid):
+
     start_time = datetime.now()
     vdb_conn = oracledb.connect(host=db_hostname, port=db_port, user=username, password=pwd, sid=sid)
     curs = vdb_conn.cursor()
@@ -507,8 +558,9 @@ def evaluate(db_hostname, db_port, username, pwd, sid):
                     ORDER BY ID, n ) CR ON CB.VALUE = CAST(CR.chiavi AS VARCHAR(200)) \
                                                 LEFT JOIN CHECK_LINK CL ON CB.ID = CL.ID_BASE \
                                                     JOIN CHECK_VIEW_2 CV2 ON CL.ID_CHECK = CV2.ID) WHERE EVALUATION = 0")
+    
     end_time = datetime.now()
-    print(f"discrepancies evaluation finished in {end_time - start_time}")
+    print(f"Discrepancies evaluation finished in {end_time - start_time}")
 
     return rs
 
@@ -527,16 +579,11 @@ def evaluate(db_hostname, db_port, username, pwd, sid):
 
 
 
-
-
-    
-
-
 class DelphixEngine:
     def __init__(self, ip, ):
         self.ip = ip
         self.base_uri = f"https://{ip}"
-        self.session = requests.Session()
+        self.session = Session()
         header = {
             "Content-Type": "application/json"
         }
@@ -548,60 +595,140 @@ class DelphixEngine:
     def __str__(self):
         return self.ip
 
+    """
+        Sends a GET request to the specified API endpoint.
+
+        This method constructs the full API URL and sends a GET request. 
+        It handles authorization if a token is provided and checks the response for errors.
+
+        Args:
+            uri (str): The API endpoint to send the GET request to.
+            key (str, optional): The key to extract from the JSON response.
+            field (str, optional): The field to extract from the JSON response.
+            auth_token (str, optional): The authorization token to include in the request headers.
+
+        Returns:
+            dict or any: The extracted result from the JSON response, or the full response if no key or field is specified.
+        
+        Raises:
+            Exception: If the response indicates an error.
+    """
     def _get(self, uri, key=None, field=None, auth_token=None):
+
         api = f"{self.base_uri}/{uri}"
-        if (auth_token):
-            self.session.headers.update({'Authorization'  : '{auth_token}'})
+        if auth_token:
+            self.session.headers.update({'Authorization': f'{auth_token}'})
+        
         response = self.session.get(api, verify=False)
-        if(auth_token):
-            if not response.ok or json.dumps(response.json()).__contains__("errorMessage") :
+        
+        # Check for errors in the response
+        if auth_token:
+            if not response.ok or "errorMessage" in response.json():
                 raise Exception(f"{uri}: {response.json()}")
         else:
-            if not response.ok or response.json()['status'] == 'ERROR':
+            if not response.ok or response.json().get('status') == 'ERROR':
                 raise Exception(f"{uri}: {response.json()}")
+        
         result = response.json()
         if key:
             result = result[key]
         if field:
             result = result[field]
+        
         return result
 
+    """
+        Sends a POST request to the specified API endpoint.
+
+        This method constructs the full API URL and sends a POST request with the provided data. 
+        It checks the response for errors and handles authorization if necessary.
+
+        Args:
+            uri (str): The API endpoint to send the POST request to.
+            data (dict, optional): The data to send in the POST request.
+            key (str, optional): The key to extract from the JSON response.
+
+        Returns:
+            dict: The JSON response from the POST request.
+        
+        Raises:
+            Exception: If the response indicates an error.
+    """
     def _post(self, uri, data=None, key=None):
+
         api = f"{self.base_uri}/{uri}"
         response = self.session.post(api, json=data, verify=False)
-        if("Authorization" in self.session.headers.keys() or uri=="masking/api/login"):
+        
+        # Check for errors in the response
+        if "Authorization" in self.session.headers or uri == "masking/api/login":
             if not response.ok or "errorMessage" in response.json():
                 raise Exception(f"{uri}: {response.json()}\ndata: {data} \n code : {response.status_code}")
         else:
-            if not response.ok or response.json()['status'] == 'ERROR':
+            if not response.ok or response.json().get('status') == 'ERROR':
                 raise Exception(f"{uri}: {response.json()}\ndata: {data}")
+        
         return response
-    
+
+    """
+        Filters a list of dictionaries based on a specified parameter.
+
+        This method returns a list of dictionaries where the specified parameter matches the given string.
+
+        Args:
+            list (list): The list of dictionaries to filter.
+            string (str): The string to match against the specified parameter.
+            param (str): The parameter to check in each dictionary.
+
+        Returns:
+            list: A list of matching dictionaries, or None if no matches are found.
+    """
     def filter_by_string(self, list, string, param):
-        """
-        for x in list:
-            if(x[param]!=string):
-                list
-        """
+
         list = [s for s in list if s.get(param) == string]
-        if(len(list)):
+        if len(list):
             return list
         else:
             print("No element found")
             return None
+    
+    
+    """
+        Retrieves the latest snapshot from a list based on a specified parameter.
 
+        This method compares the specified parameter of each item in the list and returns the one with the latest value.
+
+        Args:
+            List (list): The list of items to evaluate.
+            param (str): The parameter to compare for determining the latest item.
+
+        Returns:
+            dict: The item with the latest value for the specified parameter.
+    """
     def getLatest_snap(self, List, param):
-            if(len(List)==1):
-                return List
-            latest = List[0]
-            for x in List:
-                if(parser.isoparse(latest[param]) < (parser.isoparse(x[param]))):
-                    latest = List[x]
-                
-            return latest
 
+        if len(List) == 1:
+            return List[0]
+        
+        latest = List[0]
+        for x in List:
+            if parser.isoparse(latest[param]) < parser.isoparse(x[param]):
+                latest = x
+        
+        return latest
 
+    """
+        Creates a new session with the Delphix API.
+
+        This method sends a POST request to the session endpoint with the specified API version.
+
+        Args:
+            api_version (str): The version of the API to use for the session.
+
+        Returns:
+            dict: The JSON response containing session information.
+    """
     def create_session(self, api_version):
+
         uri = r"resources/json/delphix/session"
         major, minor, micro = api_version.split('.')
         data = {
@@ -616,80 +743,70 @@ class DelphixEngine:
         response = self._post(uri, data)
         return response.json()
 
+
+    """
+        Logs in to the Delphix API using the provided credentials.
+
+        This method sends a POST request to the login endpoint with the username and password.
+
+        Args:
+            username (str): The username for authentication.
+            password (str): The password for authentication.
+
+        Returns:
+            dict: The JSON response containing login information.
+        
+        Raises:
+            Exception: If the login fails.
+    """
     def login_data(self, username, password):
+
         uri = r"resources/json/delphix/login"
         data = {
             'type': 'LoginRequest',
             'username': username.strip(),
             'password': password.strip(),
-            'target' : 'DOMAIN'
+            'target': 'DOMAIN'
         }
         response = self._post(uri, data)
         return response
-    """
-    L'engin 1 è collegato ad un server LDAP, che gestisce l'autenticazione. Se viene passato semplicemente admin 
-    come username, l'engine non capisce quale admin da LDAP prendere, è quindi necessario indicare un dominio di autenticazione.
-    """
 
+
+    """
+    Logs in to the compliance API using the provided credentials.
+
+    This method sends a POST request to the compliance login endpoint and updates the session headers with the authorization token.
+
+    Args:
+        username (str): The username for authentication.
+        password (str): The password for authentication.
+
+    Returns:
+        str: The authorization token received from the login response.
+    """
     def login_compliance(self, username, password):
-        uri="masking/api/login"
+
+        uri = "masking/api/login"
         data = {
-            'username' : username.strip(),
-            'password' : password.strip()
+            'username': username.strip(),
+            'password': password.strip()
         }
         response = self._post(uri, data)
-        self.session.headers.update({'Authorization' : response.json()["Authorization"]})
+        self.session.headers.update({'Authorization': response.json()["Authorization"]})
         return response.json()["Authorization"]
 
 
-    def capacity(self, ):
-        uri = r"resources/json/delphix/capacity/consumer"
-        response = self._get(uri, key="result")
-        for res in response:
-            yield Capacity(res)
     """
-    The output of the capacity method is a generator that yields instances of the Capacity class
-    The Capacity instance is then yielded to the caller, allowing the caller to iterate over the capacity information.
-    """
+    Executes a replication job based on the specified reference.
 
-    def database(self, reference ):
-        uri = rf"resources/json/delphix/database/{reference}"
-        response = self._get(uri, key="result")
-        database = Database(response)
-        return database
+    This method sends a POST request to start the replication job and monitors its progress until completion.
 
-    def source(self, database_reference):
-        uri = rf"resources/json/delphix/source?database={database_reference}"
-        response = self._get(uri, key="result")
-        for res in response:
-            yield Source(res)
-    """
-    Sources represent external database instances outside the Delphix system. These can be linked sources 
-    (which pull data into Delphix from pre-existing databases) 
-    or virtual sources, which export data from Delphix to arbitrary targets.
-    """
+    Args:
+        reference (str): The reference ID for the replication job.
 
-    def source_config(self, reference):
-        uri = rf"resources/json/delphix/sourceconfig/{reference}"
-        response = self._get(uri, key="result", field="repository")
-        return response
+    Returns:
+        None
     """
-    The source config represents the dynamically discovered attributes of a source.
-    per consultare le informazioni del config, Deve essere passata la referenza al config 
-    retrivabile dall'api source, filtrato eventualmente per dataabse o env..
-    """
-
-    def repository(self, source_config_reference):
-        uri = rf"resources/json/delphix/repository/{source_config_reference}"
-        response = self._get(uri, key="result")
-        repository = Repository(response)
-        return repository
-    """
-    Source repositories are containers for SourceConfig objects. 
-    Each Environment can contain any number of repositories, and repositories can contain any number of source configurations. 
-    A repository typically corresponds to a database installation.
-    """
-
     def replication(self, reference):
 
         start_time = datetime.now()
@@ -697,88 +814,79 @@ class DelphixEngine:
         job_id = (self._post(uri_repExe)).json()['job']
         uri_jobId = rf"resources/json/delphix/job/{job_id}"
 
-        uri_JobRef = r"resources/json/delphix/replication/serializationpoint/"
-        # listRepJobs = self._get(uri_JobRef, key="result")
-        # RepJob = self.filter_by_string(listRepJobs, rep_tag, "tag")
-        # RepJob = list(filter(lambda x: x['tag']==rep_tag, listRepJobs))
-
-
         uri_SourceState = r"resources/json/delphix/replication/sourcestate"
         source_state_list = self._get(uri_SourceState, key="result")
-        sourceState_rep = list(filter(lambda x: x['spec']==reference, source_state_list)) # non filtra correttamente
-        sourceState_rep = [x for x in source_state_list if x['spec']==reference]
-        sourceState_rep = self.filter_by_string(source_state_list, reference, "spec")
 
-
-        # print(self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec"))
-        # print(sourceState_rep)
-        # print(sourceState_rep[0]['activePoint'])
-        print(rf"Preparing replication job {(self._get(uri_jobId, key="result"))['target']}...")
-        while(self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec")[0]["activePoint"]==None):
+        print(rf"Preparing replication job {(self._get(uri_jobId, key='result'))['target']}...")
+        while self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec")[0]["activePoint"] is None:
             print_process_status()
-        print(rf"Waiting for replication {(self._get(uri_jobId, key="result"))['target']} to finish...")
-        while(self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec")[0]["activePoint"]!=None):
+        
+        print(rf"Waiting for replication {(self._get(uri_jobId, key='result'))['target']} to finish...")
+        while self.filter_by_string(self._get(uri_SourceState, key="result"), reference, "spec")[0]["activePoint"] is not None:
             print_process_status()
+        
         end_time = datetime.now()
-        print(rf"replication job {(self._get(uri_jobId, key="result"))['target']} completed in {end_time-start_time}")
+        print(rf"Replication job {(self._get(uri_jobId, key='result'))['target']} completed in {end_time - start_time}")
 
         return
     
+
+    """
+    Refreshes a virtual database (VDB) using the specified data source reference.
+
+    This method retrieves the latest snapshot for the specified data source and sends a request to refresh the VDB.
+
+    Args:
+        vdb_ref (str): The reference ID of the virtual database to refresh.
+        dSource_ref (str): The reference ID of the data source to use for the refresh.
+
+    Returns:
+        None
+    """
     def refresh(self, vdb_ref, dSource_ref):
-        """
-        l'api refresh necessita di una referenza allo snapshot da cui prednere i dati del refresh.
-        L'unica soluzione al momento è prendere una lista di snapshot(passando come param una referenza al container contenent il dsource creato dalla replica) e filtrare per reference al container del vdb provisionato con lo snapshot.
-        Confrontare i timestamp e prendere quello con timestamp più recente.
-        """
-        """
-        Altro modo, tramite api /resources/json/delphix/database/{ref} si risale ai dati del database contenente il dSource, tra cui il current timeflow da cui si può risalire al parent snapshot e la sua referenza
-        Problema --> lo snapshot effettuato alla creazione della replica, non è referenziato nel timeflow -->provare a fare uno snapshot per 
-        """
+
         start_time = datetime.now()
         uri_snap = rf"resources/json/delphix/capacity/snapshot"
-
-        # uri_vdb = rf"/resources/json/delphix/database/{vdb_ref}"
-        # uri_dSource = rf"/resources/json/delphix/database/{dSource_ref}"
-
-
         snaps = self.filter_by_string(self._get(uri_snap, key="result"), dSource_ref, "container")
-        # l'api ...capacity/snapshot ritorna le snapshot ordinate decrescentmente per grandezza snapshot, 
-        # quindi l'ultima è quella più recente, filtrare con met sotto più sicuro
-        # latestSnap_vdb = (self.getLatest_snap(snaps, "snapshotTimestamp"))['snapshot']
-
-        # print(self._get(uri_snap, key="result"))
-
         snap_ref = snaps[0]['snapshot']
 
         uri_refresh = rf"resources/json/delphix/database/{vdb_ref}/refresh"
         data = {
-       "type": "OracleRefreshParameters",
-       "timeflowPointParameters": {
+            "type": "OracleRefreshParameters",
+            "timeflowPointParameters": {
                 "type": "TimeflowPointSnapshot",
                 "snapshot": snap_ref
+            }
         }
-	    # "username": "admin",
-	    # "credential": {
-		# "type": "PasswordCredential",
-		# "password": "delphix"
-        
-	    }
+
         job_id = (self._post(uri_refresh, data)).json()['job']
         uri_jobId = rf"resources/json/delphix/job/{job_id}"
         print(rf"Waiting for refresh of {vdb_ref} to finish...")
-        while(self._get(uri_jobId, key="result")['jobState']!="COMPLETED"):
+        while self._get(uri_jobId, key="result")['jobState'] != "COMPLETED":
             print_process_status()
+        
         end_time = datetime.now()
-        print(f"refresh of {vdb_ref} completed in {end_time-start_time}")
+        print(f"Refresh of {vdb_ref} completed in {end_time - start_time}")
 
         return
+    
+    """
+        Executes a masking job based on the specified job ID.
 
+        This method sends a request to start the masking job and monitors its progress until completion.
+
+        Args:
+            jobId (str): The ID of the masking job to execute.
+
+        Returns:
+            None
+    """
     def mask(self, jobId):
 
         start_time = datetime.now()
-        uri="masking/api/executions"
+        uri = "masking/api/executions"
 
-        data={ 
+        data = { 
             "jobId": jobId 
         }
 
@@ -786,12 +894,13 @@ class DelphixEngine:
         uriExec = rf"masking/api/executions/{execId}"
         
         print(rf"Waiting for control to finish...")
-        while(self._get(uriExec, key="status")=="RUNNING"):
+        while self._get(uriExec, key="status") == "RUNNING":
             print_process_status()
-        if(self._get(uriExec, key="status")=="SUCCEEDED"):
+        
+        if self._get(uriExec, key="status") == "SUCCEEDED":
             end_time = datetime.now()
-            print(rf"Control completed successfully in {end_time-start_time}")
-        elif(self._get(uriExec, key="status")=="FAILED"): 
+            print(rf"Control completed successfully in {end_time - start_time}")
+        elif self._get(uriExec, key="status") == "FAILED": 
             print(rf"Error encountered during Control")
 
         return
