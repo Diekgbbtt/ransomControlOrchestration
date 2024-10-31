@@ -894,6 +894,16 @@ class DelphixEngine:
 
 
 if __name__ == "__main__":
+
+    # query database con controlli
+    try:
+        with open('config.json', 'r') as cfg:
+                cfg_dict = json_load(cfg)
+
+    except Exception as e:
+            print(f"Error opening config: {str(e)}")
+    
+    rcheck = ransomChek(data=cfg_dict)
     controlDatabase()
 
 
