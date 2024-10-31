@@ -43,6 +43,7 @@ from requests import packages, Session
 from smtplib import SMTP
 import oracledb
 from email.message import EmailMessage
+from progress.bar import IncrementalBar
 
 # standard library modules
 from sys import stdout
@@ -209,11 +210,10 @@ def main():
 
 # display a bar that shows the progress of the process
 def print_process_status():
-    stdout.write('.')
-    stdout.flush()
-    time.sleep(2)
-    stdout.write('\b \b' * 3)  # Erase the last three dots
-    return
+    bar = IncrementalBar(suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s] (%(iter_value)s)', color='green', max=100)
+
+
+    pass
 
 """
     Creates a report file and zips it, returning the path to the zipped report.
