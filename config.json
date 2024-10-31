@@ -46,9 +46,10 @@
     },
 
 
-    "Replications": [
+    "Controls": [
         { 
             "ID" : 1,
+            "name" : "ransomCheck",
             "sourceEngineRef" : "data_1",
             "vaultEngineRef" : "data_13",
             "discEngineRef" : "compl_13",

@@ -147,16 +147,12 @@ class controlFactory:
 class ransomChek(controlClass):
 
     def __init__(self, data):
+
+
         
         return
 
     def start(self):
-        try:
-            with open('config.json', 'r') as cfg:
-                cfg_dict = json_load(cfg)
-
-        except Exception as e:
-            print(f"Error opening config: {str(e)}")
 
         for rep in cfg_dict.get('Replications'):
             try:
@@ -885,13 +881,16 @@ class DelphixEngine:
 
 if __name__ == "__main__":
 
-    # con piu contrlli, query database con controlli invece di config
+    # con piu controlli, query database con controlli invece di config
 
-    load_config()
-
-    
-    rcheck = ransomChek(data=cfg_dict)
-    controlDatabase()
+    cfg_dict = load_config()
+    for ctrl in cfg_dict.get('Controls'):
+            try:
+                ctrl_factory = controlFactory(controlClass=ctrl.get('name'))
+                rcheck = ctrl_factory.instance_control(data=cfg_dict)
+                controlDatabase(rcheck)
+            except Exception as e:
+                print(f"Error starting control {ctrl.get('control')} : {str(e)}")
 
 
 
