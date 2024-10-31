@@ -210,10 +210,9 @@ def main():
 
 # display a bar that shows the progress of the process
 def print_process_status():
-    bar = IncrementalBar(suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s] (%(iter_value)s)', color='green', max=100)
-
-
-    pass
+    bar = IncrementalBar(suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s] (%(iter_value)s)', color='blue', max=100)
+    for i in bar.iter(range(200)):
+        time.sleep(0.01)
 
 """
     Creates a report file and zips it, returning the path to the zipped report.
