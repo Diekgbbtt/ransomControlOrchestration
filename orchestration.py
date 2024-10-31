@@ -43,14 +43,11 @@ from requests import packages, Session
 from smtplib import SMTP
 import oracledb
 from email.message import EmailMessage
-from progress.bar import IncrementalBar
 
 # standard library modules
 from abc import ABC, abstractmethod
-from sys import stdout
 from warnings import simplefilter
 from urllib3 import disable_warnings, exceptions
-from json import load as json_load
 from os import remove, chdir, makedirs, path, write, close, open, O_CREAT, O_WRONLY
 from math import ceil
 from shutil import copy
@@ -59,6 +56,7 @@ from dateutil import parser # type: ignore
 from datetime import datetime
 from zipfile import ZipFile
 from sqlite3 import connect, Connection
+from utils import *
 
 
 
@@ -111,18 +109,10 @@ Returns:
 """
 
 
-def controlDatabase(check: controlClass):
-
-    check.start()
-    while( not check.finish()):
-        print("controllo in corso")
 
 
-# display a bar that shows the progress of the process
-def print_process_status():
-        bar = IncrementalBar(suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s] (%(iter_value)s)', color='blue', max=100)
-        for i in bar.iter(range(200)):
-            time.sleep(0.01)
+
+
 
 
 
@@ -895,13 +885,10 @@ class DelphixEngine:
 
 if __name__ == "__main__":
 
-    # query database con controlli
-    try:
-        with open('config.json', 'r') as cfg:
-                cfg_dict = json_load(cfg)
+    # con piu contrlli, query database con controlli invece di config
 
-    except Exception as e:
-            print(f"Error opening config: {str(e)}")
+    load_config()
+
     
     rcheck = ransomChek(data=cfg_dict)
     controlDatabase()
