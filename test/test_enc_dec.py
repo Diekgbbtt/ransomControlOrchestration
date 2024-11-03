@@ -1,7 +1,7 @@
 import os
 import sys 
 
-from utils import decrypt_value, encrypt_value
+from ..utils import decrypt_value, encrypt_value
 
 
 def test_enc_decryption(plaintext):
