@@ -3,7 +3,7 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from orchestration import controlFactory, ransomCheck
+from ..orchestration import controlFactory, ransomCheck
 
 @pytest.fixture
 def control_factory():
