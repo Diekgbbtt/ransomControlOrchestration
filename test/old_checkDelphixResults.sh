@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# deprecated, implemented in a py method with oracledb
+
 # impostazione variabili per assicurarsi che shell trovi sqlcl binary - definire var ambiente ORACLE_HOME e aggiungere a PATH oracle_home/bin credo
 
 

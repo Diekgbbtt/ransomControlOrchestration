@@ -1,4 +1,5 @@
 ./reports.db
 ./config.json
-
-
+./.vscode/
+./__pycache__/
+./Evaluation/
