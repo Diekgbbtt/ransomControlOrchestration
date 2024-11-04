@@ -2,8 +2,12 @@
 
 
 import pytest
+import sys
+import os
 from unittest.mock import Mock, patch
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ..orchestration import controlFactory, ransomCheck
+
 
 @pytest.fixture
 def control_factory():

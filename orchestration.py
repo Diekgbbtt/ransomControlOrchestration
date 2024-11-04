@@ -42,10 +42,14 @@ TO DO:
 from requests import packages, Session, RequestException
 from smtplib import SMTP, SMTPException
 from oracledb import defaults as oracle_defaults, Error as oracle_error, connect as oracle_connect, Connection, Cursor, OperationalError, DatabaseError
+# import cx_Oracle
 from email.message import EmailMessage
 from email.errors import *
+from utils import decrypt_value, json_load, load_config, controlDatabase
+from progress.bar import IncrementalBar
 
 # standard library modules
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Union, Any, List
 from warnings import simplefilter
@@ -53,12 +57,10 @@ from urllib3 import disable_warnings, exceptions
 from os import remove, chdir, makedirs, path, write, close, open, O_CREAT, O_WRONLY
 from math import ceil
 from shutil import copy
-import time
-from dateutil import parser # type: ignore
 from datetime import datetime
 from zipfile import ZipFile, error as zip_error
-from sqlite3 import connect, Connection, Error
-from utils import *
+from sqlite3 import connect, Connection, Error as sqlite_error, OperationalError, InterfaceError
+
 
 
 disable_warnings(exceptions.InsecureRequestWarning)  # needed to suppress warnings
@@ -112,14 +114,14 @@ class controlFactory:
             match self.control:
                 case 'ransomCheck':
                     return ransomCheck(control_data=control_data, cfg_data=cfg_data)
-                case 'anotherCheck':
+                case'anotherCheck':
                     pass
                 case _: # Default case to handle any unmatched control type
                     raise Exception(msg=f"Control {self.control} not supported")
         except:
             raise Exception(msg=f"Error creating control instance {self.control}. \n Error : {e.msg if e.hasattr('msg') else e}")
     
-class ransomCheck(controlClass):
+class ransomCheck(ControlClass):
 
     def __init__(self, control_data: dict, cfg_data: dict) -> None:
 
@@ -215,7 +217,7 @@ class ransomCheck(controlClass):
     def connect_db(self, file_name: str = 'reports.db') -> None:
         try:
             self.db_conn = connect(file_name)
-        except OperationalError or oracle_error as e:
+        except OperationalError or sqlite_error as e:
             raise Exception(msg=f"Errror connecting to vault database. \n Error : {e}")
   
     def create_report(self) -> Union[str, None]:
@@ -338,7 +340,7 @@ class ransomCheck(controlClass):
             self.db_conn.commit()
             print(f"Report {report_name} status updated to {status}")
 
-        except oracle_error as e:
+        except sqlite_error as e:
             raise Exception(msg=f"Error updating report status: \n {e}")
 
     """
@@ -361,7 +363,7 @@ class ransomCheck(controlClass):
         self.report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
         try:
             cursor = self.db_conn.cursor()
-        except DatabaseError or oracle_error as e:
+        except InterfaceError or sqlite_error as e:
             if self.db_conn:
                 self.db_conn.rollback()
                 # reverts any uncommitted changes made in the current transaction. 
@@ -369,7 +371,7 @@ class ransomCheck(controlClass):
             try:
                 self.connect_db()
                 self.register_reports()
-            except oracle_error as e:
+            except sqlite_error as e:
                 raise Exception(msg=(e.msg if e.hasattr('msg') else f"Error getting cursor from db connection: {str(e)}"))
 
         try:
@@ -401,13 +403,13 @@ class ransomCheck(controlClass):
                 })
 
             self.db_conn.commit()
-        except oracle_error as e:
+        except sqlite_error as e:
             if self.db_conn:
                 self.db_conn.rollback()
             try:
                 self.connect_db()
                 self.register_reports()
-            except oracle_error as e:
+            except sqlite_error as e:
                 raise Exception(msg=(e.msg if e.hasattr('msg') else f"Error registering reports: {str(e)}"))
             
 
@@ -582,7 +584,11 @@ class ransomCheck(controlClass):
             print(f"Discrepancies evaluation finished in {end_time - start_time}")
         except oracle_error as e:
             raise Exception(msg=f"Error executing query to fetch control results \n Error : {e}")
-
+        finally:
+            if curs:
+                curs.close()
+            if vdb_conn:
+                vdb_conn.close()
 
 class DelphixEngine:
     def __init__(self, ip: str):
@@ -714,14 +720,14 @@ class DelphixEngine:
         Returns:
             dict: The item with the latest value for the specified parameter.
     """
-    def get_latest_snap(self, List_of_dicts: List[Dict], param: str) -> Dict:
+    def get_latest_snap(self, param: str) -> Dict:
 
         if len(List) == 1:
             return List[0]
         
         latest = List[0]
         for x in List:
-            if parser.isoparse(latest[param]) < parser.isoparse(x[param]):
+            if datetime.strptime(latest[param], '%Y-%m-%dT%H:%M:%S.%fZ') < datetime.strptime(x[param], '%Y-%m-%dT%H:%M:%S.%fZ'):
                 latest = x
         
         return latest
