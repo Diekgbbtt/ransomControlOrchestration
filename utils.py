@@ -54,16 +54,16 @@ def decrypt_value(encrypted_value):
             # Decode the base64 encoded data
             encrypted_data = b64decode(encrypted_value)
         except binascii_Error or Exception as e :
-            raise Exception(msg=f"Error decoding ecnrypted value {encrypted_value} from base64: \n {e}")
+            raise Exception(f"Error decoding ecnrypted value {encrypted_value} from base64: \n {e}")
     
         # Extract the IV (first 16 bytes) and the actual ciphertext
         iv = encrypted_data[:16]
         ciphertext = encrypted_data[16:]
 
-        key = os.environ.get(ENV_KEY_NAME).encode()[:32]  # Ensure the key is 32 bytes (AES-256 requires a 256-bit key)
-        if key == None:
-            raise Exception(msg=f"env variable {ENV_KEY_NAME} with encryption key not found, impossible to decrypt values")
-
+        _key = os.environ.get(ENV_KEY_NAME)  # Ensure the key is 32 bytes (AES-256 requires a 256-bit key)
+        if _key == None:
+            raise Exception(f"env variable {ENV_KEY_NAME} with encryption key not found, impossible to decrypt values")
+        key = _key.encode()[:32]
         
         # Create the cipher object for decryption
         cipher = Cipher(algorithms.AES(bytes(key)), modes.CBC(iv), backend=default_backend())
@@ -77,15 +77,15 @@ def decrypt_value(encrypted_value):
         except ValueError or TypeError as e:
             # TypeError - If the input data type is not bytes, or anyway incorrect format for padding
             # ValueError - padding is invalid or corrupted
-            raise Exception(msg=f"Error decrypting or unpadding decrypted value. \n Error : {e}")
+            raise Exception(f"Error decrypting or unpadding decrypted value. \n Error : {e}")
         
         return plaintext.decode()
     except InternalError as e:
-        raise Exception(msg=f"Internal Error while decrypting value. \n Error : {e.msg if e.hasattr('msg') else e} \n Error code : {e.err_code if e.hasatttr('err_code') else ''}")
+        raise Exception(f"Internal Error while decrypting value. \n Error : {str(e) if str(e) else e} \n Error code : {e.err_code if e.hasatttr('err_code') else ''}")
     except InvalidTag as e:
-        raise Exception(msg=f"invalid key or authentication tag : \n {e}")
+        raise Exception(f"invalid key or authentication tag : \n {e}")
     except Exception as e:
-        raise Exception(msg=f"Error decrypting value. \n Error : {e}")
+        raise Exception(f"Error decrypting value. \n Error : {e}")
 
 
 # Process JSON file and encrypt specified keys
@@ -138,7 +138,7 @@ def controlDatabase(check):
         os.system('clear')
         print(f"Finished control {check.name} in {f_time - s_time} seconds")
     except Exception as e:
-        raise Exception(msg=(e.msg if e.hasattr('msg') else f"Error executing control {check.name}: \n Error : {e}"))
+        raise Exception(f"{str(e) if str(e) else f"Error executing control {check.name}: \n Error : {e}"}")
 
 # display a bar that shows the progress of the process
 # def print_process_status():
