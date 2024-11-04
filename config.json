@@ -1,58 +1,51 @@
 {
-    "dpx_engines" : {
+    "dpx_engines": {
         "source_engines": {
-
             "data_1": {
-                "host": "172.16.180.1",
-                "apiVersion" : "1.11.25",
-                "usr" : "admin",
-                "pwd" : "Delphix1."
+                "host": "hsAmHllXPM7Chl31HF41sIs8AaYZmfGyt2zcRD79Ivw=",
+                "apiVersion": "1.11.25",
+                "usr": "mKhp50SLN9VqNymS87nMWqsaBLeRALb1Og6eN2uKwv0=",
+                "pwd": "1tcBEY4GggTuDgadeYOT7A+/wXNkYEEHEGFhqukHZxQ="
             }
         },
-
         "vault_engines": {
             "data_13": {
-                "host": "172.16.180.13",
-                "apiVersion" : "1.11.25",
-                "usr" : "admin",
-                "pwd" : "delphix"
+                "host": "ORnNOGqiUoM+5aXYiXxaMKBieETUkX/rTVHPS73djZc=",
+                "apiVersion": "1.11.25",
+                "usr": "uR72xiIlAbutyjQffpnYyhRIfMqONkWX/lIlAEayErw=",
+                "pwd": "Pw6bUATzH045l2W6WVMXzdEI4P3osn6QzbrmSFN3Lo8="
             }
-
         },
         "discovery_engines": {
-            "compl_13" : {
-                "host": "172.16.180.13",
-                "usr" : "admin",
-                "pwd" : "Admin-12"
+            "compl_13": {
+                "host": "MjO3VgoK2ryJFa6ciUwktGuUL5alYCG6XNX+j01A4z8=",
+                "usr": "Y4HJoUIoJi4YiZzXKpAld9QtQdMWNWMfpsP6RKXOzfw=",
+                "pwd": "sMOZ1rdh45u2Pk7QkznxdlqmuVB2g01J88FWwLGjAe0="
             }
         }
     },
-
-    "vdbs_control" : {
-    
-       "control1" : {
-            "host": "172.16.180.5",
+    "vdbs_control": {
+        "control1": {
+            "host": "ehL8LZmfO7qLXu/68mvuZp65SP18ve2IgiZqQWHTkiI=",
             "port": 21521,
             "sid": "DGP",
-            "usr" : "delphixdev",
-            "pwd" : "delphix"
-       }
+            "usr": "iRG2WwbydGVDou61QW7/ynTCwPz05jvdSf2eCco1Dl8=",
+            "pwd": "y1Um3OLQEAJub9+ATMX7icpKkYfuEG4kwEWfx6TF2Jg="
+        }
     },
-
     "mail": {
-        "smtpServer":"outlook.office365.com",
-        "usr":"d.gobbetti@nsr.it",
-        "pwd":"HUKQRYQwe69+"
+        "smtpServer": "PhH5TUyvHIQWQE+J61Q373NFiOfxSqGgMc4P4WZVaA9rX7g7R/gvnNgx/7+fJETx",
+        "usr": "Dy//Fijqiv/JF91hvtL+pHJj+xEmcNBDfj1aLWj/0B6TSl2nIBzlyR0Cgx0KscNp",
+        "pwd": "/g1QUaEHgN6QZWQtSMDG71fm6ubHDYGq0gpnULOMMys="
     },
-
     "Controls": [
-        { 
-            "ID" : 1,
-            "name" : "ransomCheck",
-            "sourceEngineRef" : "data_1",
-            "vaultEngineRef" : "data_13",
-            "discEngineRef" : "compl_13",
-            "vdbRef" : "control1",
+        {
+            "ID": 1,
+            "name": "ransomCheck",
+            "sourceEngineRef": "data_1",
+            "vaultEngineRef": "data_13",
+            "discEngineRef": "compl_13",
+            "vdbRef": "control1",
             "replicationSpec": "REPLICATION_SPEC-8",
             "vdbContainerRef": "ORACLE_DB_CONTAINER-247",
             "dSourceContainer_ref": "ORACLE_DB_CONTAINER-239",
