@@ -1,5 +1,6 @@
 # /bin/env python3.12
 
+from binascii import Error as binascii_Error
 from json import load as json_load, dump
 from datetime import datetime
 import os
@@ -49,9 +50,12 @@ def encrypt_value(plaintext, key):
 def decrypt_value(encrypted_value):
 
     try:    
-        # Decode the base64 encoded data
-        encrypted_data = b64decode(encrypted_value)
-        
+        try:
+            # Decode the base64 encoded data
+            encrypted_data = b64decode(encrypted_value)
+        except binascii_Error or Exception as e :
+            raise Exception(msg=f"Error decoding ecnrypted value {encrypted_value} from base64: \n {e}")
+    
         # Extract the IV (first 16 bytes) and the actual ciphertext
         iv = encrypted_data[:16]
         ciphertext = encrypted_data[16:]
@@ -65,10 +69,15 @@ def decrypt_value(encrypted_value):
         cipher = Cipher(algorithms.AES(bytes(key)), modes.CBC(iv), backend=default_backend())
         decryptor = cipher.decryptor()
         
-        # Decrypt and then remove padding
-        padded_data = decryptor.update(ciphertext) + decryptor.finalize()
-        unpadder = padding.PKCS7(128).unpadder()
-        plaintext = unpadder.update(padded_data) + unpadder.finalize()
+        try:
+            # Decrypt and then remove padding
+            padded_data = decryptor.update(ciphertext) + decryptor.finalize()
+            unpadder = padding.PKCS7(128).unpadder()
+            plaintext = unpadder.update(padded_data) + unpadder.finalize()
+        except ValueError or TypeError as e:
+            # TypeError - If the input data is not in bytes format
+            # ValueError - padding is invalid or corrupted
+            raise Exception(msg=f"Error decrypting or unpadding decrypted value. \n Error : {e}")
         
         return plaintext.decode()
     except InternalError as e:
