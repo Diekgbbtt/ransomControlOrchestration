@@ -13,7 +13,7 @@ class TestDecryptValue:
 
     @pytest.fixture
     def valid_ciphertext(self):
-        with open ('../config.json', 'r') as config:
+        with open ('./config.json', 'r') as config:
             cfg_data = json_load(config)
             return cfg_data.get('mail').get('smtpServer')
 
@@ -36,7 +36,7 @@ class TestDecryptValue:
 
     def test_internal_error(self, valid_ciphertext):
         with patch('cryptography.hazmat.primitives.ciphers.Cipher') as mock_cipher:
-            mock_cipher.side_effect = InternalError(err_code=100, err_text="Internal error")
+            mock_cipher.side_effect = InternalError(err_code=100, msg="Internal Error while decrypting value. \n Error :")
             with pytest.raises(Exception) as exc_info:
                 decrypt_value(valid_ciphertext)
             assert "Internal Error while decrypting" in str(exc_info.value)
@@ -64,4 +64,4 @@ class TestDecryptValue:
         with patch.dict(os.environ, {'ENCRYPTION_KEY': valid_env_key}):
             with pytest.raises(Exception) as exc_info:
                 decrypt_value(valid_ciphertext)
-            assert "Error decrypting value" in str(exc_info.value)
+            assert "Error decrypting or unpadding decrypted value" in str(exc_info.value)

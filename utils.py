@@ -75,7 +75,7 @@ def decrypt_value(encrypted_value):
             unpadder = padding.PKCS7(128).unpadder()
             plaintext = unpadder.update(padded_data) + unpadder.finalize()
         except ValueError or TypeError as e:
-            # TypeError - If the input data is not in bytes format
+            # TypeError - If the input data type is not bytes, or anyway incorrect format for padding
             # ValueError - padding is invalid or corrupted
             raise Exception(msg=f"Error decrypting or unpadding decrypted value. \n Error : {e}")
         
