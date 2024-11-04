@@ -4,6 +4,7 @@ from cryptography.exceptions import InvalidKey, InternalError, InvalidTag
 from base64 import b64decode
 import os
 from utils import decrypt_value
+from json import load as json_load
 
 class TestDecryptValue:
     @pytest.fixture
@@ -12,7 +13,9 @@ class TestDecryptValue:
 
     @pytest.fixture
     def valid_ciphertext(self):
-        return "KSWXTqBvcH9EVaGaCgSJZ0avZjHxoWX2QRN78R4f22md61oSr4WaakRwdrw7Uwjk"
+        with open ('../config.json', 'r') as config:
+            cfg_data = json_load(config)
+            return cfg_data.get('mail').get('smtpServer')
 
     def test_successful_decryption(self, valid_env_key, valid_ciphertext):
         with patch.dict(os.environ, {'ENCRYPTION_KEY': valid_env_key}):
