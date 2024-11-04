@@ -2,41 +2,41 @@
     "dpx_engines": {
         "source_engines": {
             "data_1": {
-                "host": "172.16.180.1",
+                "host": "kM9xnu5v9JkVOKLTjNwUzC5+6v63pMb0fgE0VoPjwho=",
                 "apiVersion": "1.11.25",
-                "usr": "admin",
-                "pwd": "Delphix1."
+                "usr": "SP+iefykb7uMBj+qrX3PrQCGZMcMRzzabzLEUnfGMRk=",
+                "pwd": "rj6dp6QdiiO2fKBfqbYctcHldSI3JamlKRRb9uaIqEc="
             }
         },
         "vault_engines": {
             "data_13": {
-                "host": "172.16.180.13",
+                "host": "WDe4MDV8E/A4cW9GbXDMiIvIb0NfCULiM1tuMEUEMnc=",
                 "apiVersion": "1.11.25",
-                "usr": "admin",
-                "pwd": "delphix"
+                "usr": "w6dboMwSTbyBNiR1W1MtGtM7KXbDKpIq2aVJtC8kczM=",
+                "pwd": "kOccRIFLfZbQC6skpwQ+iMAjYdNcqJDWJ4yfrSpFlqg="
             }
         },
         "discovery_engines": {
             "compl_13": {
-                "host": "172.16.180.13",
-                "usr": "admin",
-                "pwd": "Admin-12"
+                "host": "M9Grv+bmwfLRgUA5uys9LmMOHpS+QjUvJga/cWzvBvQ=",
+                "usr": "r0gCkAr9i9xxiD+qsNECTst/kV0KHlgqVGycxDmewMY=",
+                "pwd": "+Lt8zNvl0+g9hm3Zon88Qa/wMKoPIZVvvRmcK+M/WL8="
             }
         }
     },
     "vdbs_control": {
         "control1": {
-            "host": "172.16.180.5",
+            "host": "hDIgj0S9VICLY8oMhbsxh52lr398zxY/cZ/rWNQN+38=",
             "port": 21521,
             "sid": "DGP",
-            "usr": "delphixdev",
-            "pwd": "delphix"
+            "usr": "lOUYf+T+iRDA83KH+txtl53GJjon3trNnfZH8nvzzY4=",
+            "pwd": "nS5e+M69es9lV9a8Hu7FH7e7GJ/lbiiaewOBjKBMWpA="
         }
     },
     "mail": {
-        "smtpServer": "outlook.office365.com",
-        "usr": "d.gobbetti@nsr.it",
-        "pwd": "HUKQRYQwe69+"
+        "smtpServer": "KSWXTqBvcH9EVaGaCgSJZ0avZjHxoWX2QRN78R4f22md61oSr4WaakRwdrw7Uwjk",
+        "usr": "kiN+ez6rs6AsVwV6yUU1Fc4Sk9hpQ2NF71tquWqJ2PReo2e4aRbidELZHdNs9UAt",
+        "pwd": "VkjCq5ZCLDZfATrcmSIbuRRBmMG4iUpV3zWosBUEiHw="
     },
     "Controls": [
         {

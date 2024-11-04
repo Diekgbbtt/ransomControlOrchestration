@@ -1,8 +1,6 @@
 # /bin/env python3.12
 
 from json import load as json_load, dump
-from orchestration import controlClass
-from progress.bar import IncrementalBar
 from datetime import datetime
 import os
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -121,7 +119,7 @@ def load_config():
             print(f"Error opening config: {str(e)}")
 
 
-def controlDatabase(check: controlClass):
+def controlDatabase(check):
 
     print(f"Starting control {check.name} ")
     s_time = datetime.now()
