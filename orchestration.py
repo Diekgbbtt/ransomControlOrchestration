@@ -114,12 +114,10 @@ class controlFactory:
             match self.control:
                 case 'ransomCheck':
                     return ransomCheck(control_data=control_data, cfg_data=cfg_data)
-                case'anotherCheck':
-                    pass
                 case _: # Default case to handle any unmatched control type
-                    raise Exception(msg=f"Control {self.control} not supported")
-        except:
-            raise Exception(msg=f"Error creating control instance {self.control}. \n Error : {e.msg if e.hasattr('msg') else e}")
+                    raise Exception(f"Control {self.control} not supported")
+        except Exception as e:
+            raise Exception(f"Error creating control instance {self.control}. \n Error : {str(e) if str(e) else e}")
     
 class ransomCheck(ControlClass):
 
@@ -130,41 +128,59 @@ class ransomCheck(ControlClass):
         try:
             self.initialize_objs(cfg_data=cfg_data)
         except Exception as e:
-            raise Exception(msg=(e.msg if e.hasattr('msg') else f"Error initializing engines. \n Error : {e}"))
+            raise Exception((str(e) if str(e) else f"Error initializing engines. \n Error : {e}"))
 
     def initialize_objs(self, cfg_data: dict) -> None:
-
         try:
-            for key, val in cfg_data.get('dpx_engines').get('source_engines').items():
+            cfg_source_engines = cfg_data.get('dpx_engines').get('source_engines')
+            cfg_vault_engines = cfg_data.get('dpx_engines').get('vault_engines')
+            cfg_disc_engines = cfg_data.get('dpx_engines').get('discovery_engines')
+            cfg_vdbs_control = cfg_data.get('vdbs_control')
+            
+            if not (isinstance(cfg_source_engines, dict) and isinstance(cfg_vault_engines, dict) and isinstance(cfg_disc_engines, dict) and isinstance(cfg_vdbs_control, dict)):
+                raise Exception("Engines are not configured properly in config file")
+            
+            for key, val in cfg_source_engines.items():
                     
                 if key == self.sourceEngineRef:
                         self.source_engine = DelphixEngine(decrypt_value(val['host']))
                         self.source_engine.create_session(val['apiVersion'])
                         self.source_engine.login_data(decrypt_value(val['usr']), decrypt_value(val['pwd']))
 
-            for key, val in cfg_data.get('dpx_engines').get('vault_engines').items():
+            for key, val in cfg_vault_engines.items():
                     
                 if key == self.vaultEngineRef:
                         self.vault_engine = DelphixEngine(decrypt_value(val['host']))
                         self.vault_engine.create_session(val['apiVersion'])
                         self.vault_engine.login_data(decrypt_value(val['usr']), decrypt_value(val['pwd']))
             
-            for key, val in cfg_data.get('dpx_engines').get('discovery_engines').items():
+            for key, val in cfg_disc_engines.items():
                 if key == self.discEngineRef:
                         self.disc_engine = DelphixEngine(decrypt_value(val['host']))
                         self.disc_engine.login_compliance(decrypt_value(val['usr']), decrypt_value(val['pwd']))
-        except Exception as e:
-            raise Exception(msg=f"Error initializing engines. \n Error : {e.msg if e.hasattr('msg') else e}")
 
-        self.vdb = object()    
-        for key, val in cfg_data.get('vdbs_control').items():
-            if key == self.vdbRef:
-                    for _key, _val in val.items():
-                        setattr(self.vdb, _key, _val)
+
+            self.vdb = object()
+            for key, val in cfg_vdbs_control.items():
+                if key == self.vdbRef:
+                    if isinstance(val, dict):
+                        for _key, _val in val.items():
+                            setattr(self.vdb, _key, _val)
+                    else:
+                        raise Exception(f"Error in config data: missing vdb control details")
+            
+            self.mail = object()
+            if isinstance(cfg_data.get('mail'), dict):
+                for key, val in cfg_data.get('mail').items():
+                    setattr(self.mail, key, val)
+            else:
+                raise Exception(f"Error in config data: missing mail details")
+        except AttributeError as e:
+            raise Exception(f"Error initializing engines. Invalid config, missing parameter in control data")
+        except Exception as e:
+            raise Exception(f"Error initializing engines. \n Error : {str(e) if str(e) else e}")
         
-        self.mail = object()
-        for key, val in cfg_data.get('mail').items():
-            setattr(self.mail, key, val)
+
 
     def start(self) -> None:
 
@@ -196,7 +212,7 @@ class ransomCheck(ControlClass):
                 self.backup_report()
         
         except Exception as e:
-            raise Exception(msg=f"Error executing control. \n Error : {(e.msg if e.hasattr('msg') else e)}")
+            raise Exception(f"Error executing control. \n Error : {(str(e) if str(e) else e)}")
 
     def finish(self) -> None:
 
@@ -218,7 +234,7 @@ class ransomCheck(ControlClass):
         try:
             self.db_conn = connect(file_name)
         except OperationalError or sqlite_error as e:
-            raise Exception(msg=f"Errror connecting to vault database. \n Error : {e}")
+            raise Exception(f"Errror connecting to vault database. \n Error : {e}")
   
     def create_report(self) -> Union[str, None]:
 
@@ -236,9 +252,9 @@ class ransomCheck(ControlClass):
             close(fd)
             self.zip_report()
         except OSError as e:
-            raise Exception(msg=f"Error creating report: \n {(e.strerror if e.hasattr('strerror') else e)} \n error number:  {e.errno}")
+            raise Exception(f"Error creating report: \n {(e.strerror if e.hasattr('strerror') else e)} \n error number:  {e.errno}")
         except Exception as e:
-            raise Exception(msg=f"Error creating report: \n {(e.msg if e.hasattr('msg') else e)}")
+            raise Exception(f"Error creating report: \n {(str(e) if str(e) else e)}")
 
     """
     Creates a zip file from the specified report file and removes the original report file.
@@ -260,7 +276,7 @@ class ransomCheck(ControlClass):
             del self.report_file_path
             self.assess_dimensions()
         except Exception as e:
-            raise Exception(f"Error zipping report: {e.msg if e.hasattr('msg') else e}")
+            raise Exception(f"Error zipping report: \n {str(e) if str(e) else e}")
 
 
     """
@@ -305,9 +321,9 @@ class ransomCheck(ControlClass):
             self.update_report_status(self.reports_zip_path[:-4], "MULTIPLE REPORT ZIP CREATED")
             self.reports_zip_path = file_parts
         except OSError as e:
-            raise Exception(msg=f"error opening file, reading or writing in chunks: {e} \n {e.strerror if e.hasattr('strerror') else e}")
+            raise Exception(f"error opening file, reading or writing in chunks: {e} \n {e.strerror if e.hasattr('strerror') else e}")
         except Exception as e:
-            raise Exception(msg=f"Error assessing dimensions: \n {e.msg if e.hasattr('msg') else e}")
+            raise Exception(f"Error assessing dimensions: \n {str(e) if str(e) else e}")
 
     """
     Updates the processing status of a report in the database.
@@ -341,7 +357,7 @@ class ransomCheck(ControlClass):
             print(f"Report {report_name} status updated to {status}")
 
         except sqlite_error as e:
-            raise Exception(msg=f"Error updating report status: \n {e}")
+            raise Exception(f"Error updating report status: \n {e}")
 
     """
         Registers a report and its associated discrepancies in the database.
@@ -372,7 +388,7 @@ class ransomCheck(ControlClass):
                 self.connect_db()
                 self.register_reports()
             except sqlite_error as e:
-                raise Exception(msg=(e.msg if e.hasattr('msg') else f"Error getting cursor from db connection: {str(e)}"))
+                raise Exception((str(e) if str(e) else f"Error getting cursor from db connection: {e}"))
 
         try:
             processing_status = "REPORT TO BE GENERATED"
@@ -410,7 +426,7 @@ class ransomCheck(ControlClass):
                 self.connect_db()
                 self.register_reports()
             except sqlite_error as e:
-                raise Exception(msg=(e.msg if e.hasattr('msg') else f"Error registering reports: {str(e)}"))
+                raise Exception((str(e) if str(e) else f"Error registering reports: {e}"))
             
 
 
@@ -445,9 +461,9 @@ class ransomCheck(ControlClass):
             
             self.db_conn.close()
         except OSError as e:
-            raise Exception(msg=f"Error copying or creating directory, while backing up report: \n {e.strerror if e.hasattr('strerror') else e}")
+            raise Exception(f"Error copying or creating directory, while backing up report: \n {e.strerror if e.hasattr('strerror') else e}")
         except Exception as e:
-            raise Exception(msg=f"Error backing up report: {e.msg if e.hasattr('msg') else e}")
+            raise Exception(f"Error backing up report: {str(e) if str(e) else e}")
 
     """
         Sends an email alert with the specified report attachments.
@@ -488,11 +504,11 @@ class ransomCheck(ControlClass):
                         self.update_report_status(report[:-4], f"PART {report.split('_')[2].strip()[:-4]} OF REPORT SENT")
 
         except SMTPException as e:
-            raise Exception(msg=f"Error sending email: {(e.strerror if e.hasattr('strerror') else e)}") 
+            raise Exception(f"Error sending email: {(e.strerror if e.hasattr('strerror') else e)}") 
         except MessageError or MessageDefect as e:
-            raise Exception(msg=f"Error sending email: {e.msg}")
+            raise Exception(f"Error sending email: {str(e)}")
         except Exception as e:
-            raise Exception(msg=f"Error sending email: {e.msg if e.hasattr('msg') else e}")
+            raise Exception(f"Error sending email: {str(e) if str(e) else e}")
     """
     Prepares the email content for the alert, including the report attachment.
 
@@ -538,7 +554,7 @@ class ransomCheck(ControlClass):
                     return alert
             return alert
         except MessageError or MessageDefect as e:
-            raise Exception(msg=f"Error adding content to message \n Error : {e} ")
+            raise Exception(f"Error adding content to message \n Error : {e} ")
 
     """
     Evaluates discrepancies in the database by executing a SQL query.
@@ -583,7 +599,7 @@ class ransomCheck(ControlClass):
             end_time = datetime.now()
             print(f"Discrepancies evaluation finished in {end_time - start_time}")
         except oracle_error as e:
-            raise Exception(msg=f"Error executing query to fetch control results \n Error : {e}")
+            raise Exception(f"Error executing query to fetch control results \n Error : {e}")
         finally:
             if curs:
                 curs.close()
@@ -638,10 +654,10 @@ class DelphixEngine:
         # Check for errors in the response
         if auth_token:
             if not response.ok or "errorMessage" in response.json():
-                raise Exception(msg=f"{uri}: {response.json()}")
+                raise Exception(f"{uri}: {response.json()}")
         else:
             if not response.ok or response.json().get('status') == 'ERROR':
-                raise Exception(msg=f"{uri}: {response.json()}")
+                raise Exception(f"{uri}: {response.json()}")
         
         result = response.json()
         if key:
@@ -678,10 +694,10 @@ class DelphixEngine:
         # Check for errors in the response
         if "Authorization" in self.session.headers or uri == "masking/api/login":
             if not response.ok or "errorMessage" in response.json():
-                raise Exception(msg=f"{uri}: {response.json()}\ndata: {data} \n code : {response.status_code}")
+                raise Exception(f"{uri}: {response.json()}\ndata: {data} \n code : {response.status_code}")
         else:
             if not response.ok or response.json().get('status') == 'ERROR':
-                raise Exception(msg=f"{uri}: {response.json()}\ndata: {data}")
+                raise Exception(f"{uri}: {response.json()}\ndata: {data}")
         
         return response
 
@@ -760,9 +776,9 @@ class DelphixEngine:
             response = self._post(uri, data)
             return response.json()
         except RequestException as e:
-            raise Exception(msg=f"error creating session version {api_version} with engine {self.ip}, bad request likely. Response received {e.response}")
+            raise Exception(f"error creating session version {api_version} with engine {self.ip}, bad request likely. Response received {e.response}")
         except Exception as e:
-            raise Exception(msg=f"error creating session version {api_version} with engine {self.ip} \n Error : {e.msg if e.hasattr('msg') else e}")
+            raise Exception(f"error creating session version {api_version} with engine {self.ip} \n Error : {str(e) if str(e) else e}")
 
     """
         Logs in to the Delphix API using the provided credentials.
@@ -792,9 +808,9 @@ class DelphixEngine:
             response = self._post(uri, data)
             return response
         except RequestException as e:
-            raise Exception(msg=f"error logging in data engine {self.ip}, bad request likely. Response received {e.response}")
+            raise Exception(f"error logging in data engine {self.ip}, bad request likely. Response received {e.response}")
         except Exception as e:
-            raise Exception(msg=f"error logging in data engine {self.ip} \n Error : {e.msg if e.hasattr('msg') else e}")
+            raise Exception(f"error logging in data engine {self.ip} \n Error : {str(e) if str(e) else e}")
 
     """
     Logs in to the compliance API using the provided credentials.
@@ -820,9 +836,9 @@ class DelphixEngine:
             self.session.headers.update({'Authorization': response.json()["Authorization"]})
             return response.json()["Authorization"]
         except RequestException as e:
-            raise Exception(msg=f"error logging in compliance engine {self.ip}, Bad request likely. Response received {e.response}")
+            raise Exception(f"error logging in compliance engine {self.ip}, Bad request likely. Response received {e.response}")
         except Exception as e:
-            raise Exception(msg=f"error logging in compliance engine \n Error : {e.msg if e.hasattr('msg') else e}")
+            raise Exception(f"error logging in compliance engine \n Error : {str(e) if str(e) else e}")
 
     """
     Executes a replication job based on the specified reference.
@@ -852,9 +868,9 @@ class DelphixEngine:
                     bar.next(1)
         
         except RequestException as e:
-            raise Exception(msg=f"error executing replication job, Bad request likely. Response received {e.response}")
+            raise Exception(f"error executing replication job, Bad request likely. Response received {e.response}")
         except Exception as e:
-                raise Exception(msg=f"error executing replication job \n Error : {e.msg if e.hasattr('msg') else e}")
+                raise Exception(f"error executing replication job \n Error : {str(e) if str(e) else e}")
 
     """
     Refreshes a virtual database (VDB) using the specified data source reference.
@@ -890,9 +906,9 @@ class DelphixEngine:
                 while self._get(uri_jobId, key="result")['jobState'] != "COMPLETED":
                     bar.next(1)
         except RequestException as e:
-                raise Exception(msg=f"error executing vdb refershing job, Bad request likely. Response received {e.response}")
+                raise Exception(f"error executing vdb refershing job, Bad request likely. Response received {e.response}")
         except Exception as e:
-                raise Exception(msg=f"error executing vdb refershing job \n Error : {e.msg if e.hasattr('msg') else e}")
+                raise Exception(f"error executing vdb refershing job \n Error : {str(e) if str(e) else e}")
     
     """
         Executes a masking job based on the specified job ID.
@@ -922,11 +938,11 @@ class DelphixEngine:
                 print(rf"Control completed successfully")
             elif self._get(uriExec, key="status") == "FAILED": 
                 print(rf"Error encountered during Control")
-                raise Exception(msg=f"values control job with discovery engine failed. Check delphix dashboard")
+                raise Exception(f"values control job with discovery engine failed. Check delphix dashboard")
         except RequestException as e:
-                raise Exception(msg=f"error executing masking job to check values, Bad request likely. Response received {e.response}")
+                raise Exception(f"error executing masking job to check values, Bad request likely. Response received {e.response}")
         except Exception as e:
-                raise Exception(msg=f"error executing masking job to check values \n Error : {e.msg if e.hasattr('msg') else e}")
+                raise Exception(f"error executing masking job to check values \n Error : {str(e) if str(e) else e}")
 
 if __name__ == "__main__":
 
@@ -939,7 +955,7 @@ if __name__ == "__main__":
                 rcheck = ctrl_factory.instance_control(control_data=ctrl, cfg_data=cfg_dict)
                 controlDatabase(rcheck)
             except Exception as e:
-                print((e.msg if e.hasattr('msg') else f"Error executing control {ctrl.get('control')} : \n Error : {e}"))
+                print((str(e) if str(e) else f"Error executing control {ctrl.get('control')} : \n Error : {e}"))
                 continue
     os.system('clear')
     print("Controls Terminated")

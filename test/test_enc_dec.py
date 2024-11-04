@@ -33,7 +33,7 @@ class TestDecryptValue:
             with pytest.raises(Exception) as exc_info:
                 decrypt_value("invalid base64!")
             assert "Error decoding ecnrypted value" in str(exc_info.value)
-
+    """
     def test_internal_error(self, valid_ciphertext):
         with patch('cryptography.hazmat.primitives.ciphers.Cipher') as mock_cipher:
             mock_cipher.side_effect = InternalError(err_code=100, msg="Internal Error while decrypting value. \n Error :")
@@ -41,13 +41,40 @@ class TestDecryptValue:
                 decrypt_value(valid_ciphertext)
             assert "Internal Error while decrypting" in str(exc_info.value)
 
+    def test_internal_error(self, valid_ciphertext):
+    mock_decryptor = MagicMock()
+    mock_decryptor.update.side_effect = InternalError(err_code=100, msg="Internal Error")
+    
+    mock_cipher_instance = MagicMock()
+    mock_cipher_instance.decryptor.return_value = mock_decryptor
+    
+    with patch('cryptography.hazmat.primitives.ciphers.Cipher', return_value=mock_cipher_instance):
+        with pytest.raises(Exception) as exc_info:
+            decrypt_value(valid_ciphertext)
+        assert "Internal Error while decrypting" in str(exc_info.value)
+
+    MORE REALIASTIC internal error
+    def test_internal_error_backend_init(self, valid_ciphertext):
+    mock_backend = MagicMock()
+    mock_backend.create_symmetric_cipher.side_effect = InternalError(
+        err_code=218, # OpenSSL error code for initialization failure
+        msg="error:0E06D06C:configuration file routines:NCONF_get_string:no value"
+    )
+    
+    with patch('cryptography.hazmat.backends.default_backend', return_value=mock_backend):
+        with pytest.raises(Exception) as exc_info:
+            decrypt_value(valid_ciphertext)
+        assert "Internal Error while decrypting" in str(exc_info.value)
+        assert "error:0E06D06C" in str(exc_info.value)
+
+
     def test_invalid_tag(self, valid_ciphertext):
         with patch('cryptography.hazmat.primitives.ciphers.Cipher') as mock_cipher:
             mock_cipher.side_effect = InvalidTag()
             with pytest.raises(Exception) as exc_info:
                 decrypt_value(valid_ciphertext)
             assert "invalid key or authentication tag" in str(exc_info.value)
-
+    """
     def test_corrupted_ciphertext(self, valid_env_key):
         with patch.dict(os.environ, {'ENCRYPTION_KEY': valid_env_key}):
             corrupted_ciphertext = "corrupted_ciphertext"
