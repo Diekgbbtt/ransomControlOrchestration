@@ -45,7 +45,7 @@ from oracledb import defaults as oracle_defaults, Error as oracle_error, connect
 # import cx_Oracle
 from email.message import EmailMessage
 from email.errors import *
-from utils import decrypt_value, json_load, load_config, controlDatabase
+from utils import decrypt_value, load_config, controlDatabase
 from progress.bar import IncrementalBar
 
 # standard library modules
@@ -159,20 +159,19 @@ class ransomCheck(ControlClass):
                         self.disc_engine = DelphixEngine(decrypt_value(val['host']))
                         self.disc_engine.login_compliance(decrypt_value(val['usr']), decrypt_value(val['pwd']))
 
-
-            self.vdb = object()
             for key, val in cfg_vdbs_control.items():
                 if key == self.vdbRef:
                     if isinstance(val, dict):
-                        for _key, _val in val.items():
-                            setattr(self.vdb, _key, _val)
+                        self.vdb = val.copy()
                     else:
-                        raise Exception(f"Error in config data: missing vdb control details")
+                        raise Exception(f"Error in config data: vdb control details missing or wrongly formatted")
             
-            self.mail = object()
             if isinstance(cfg_data.get('mail'), dict):
                 for key, val in cfg_data.get('mail').items():
-                    setattr(self.mail, key, val)
+                    if isinstance(val, dict):
+                        self.mail = val.copy()
+                    else:
+                        raise Exception(f"Error in config data: sender mail details missing or wrongly formatted")
             else:
                 raise Exception(f"Error in config data: missing mail details")
         except AttributeError as e:
@@ -180,21 +179,9 @@ class ransomCheck(ControlClass):
         except Exception as e:
             raise Exception(f"Error initializing engines. \n Error : {str(e) if str(e) else e}")
         
-
-
     def start(self) -> None:
 
         try:
-            """
-            engine_1 = DelphixEngine(self.data.get('dpx_engines').get('source_engines').get(self.sourceEngineRef)['host'])
-            engine_1.create_session(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['apiVersion'])
-            engine_1.login_data(cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('source_engines').get(rep['sourceEngineRef'])['pwd'])
-            engine_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['host'])
-            engine_13.create_session(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['apiVersion'])
-            engine_13.login_data(cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('vault_engines').get(rep['vaultEngineRef'])['pwd'])
-            engineCompl_13 = DelphixEngine(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['host'])
-            engineCompl_13.login_compliance(cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['usr'], cfg_dict.get('dpx_engines').get('discovery_engines').get(rep['discEngineRef'])['pwd'])
-            """
 
             self.source_engine.replication(self.replicationSpec)
             self.vault_engine.refresh(self.vdbContainerRef, self.dSourceContainer_ref)
