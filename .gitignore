@@ -1,5 +1,10 @@
-./reports.db
-./config.json
-./.vscode/
-./__pycache__/
-./Evaluation/
+reports.db
+config.json
+.vscode/*
+__pycache__/*
+.pytestcache/*
+Evaluation/*
+.gitignore
+.DS_Store
+.venv/*
+db_control_env/*s

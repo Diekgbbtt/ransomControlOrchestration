@@ -9,6 +9,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
 from cryptography.exceptions import InvalidTag, InternalError
 from base64 import b64encode, b64decode
+from json import load as json_load
+from datetime import datetime
 import secrets
 import datetime
 from json import load as json_load
@@ -114,6 +116,30 @@ def decrypt_value(encrypted_value):
         raise Exception(f"invalid key or authentication tag : \n {e}")
     except Exception as e:
         raise Exception(f"Error decrypting value. \n Error : {e}")
+    
+    
+    
+def load_config():
+    try:
+        with open('config.json', 'r') as cfg:
+                cfg_dict = json_load(cfg)
+        return cfg_dict
+
+    except Exception as e:
+            print(f"Error opening config: {str(e)}")
+
+def controlDatabase(check):
+
+    print(f"Starting control {check.name} ")
+    s_time = datetime.now()
+    try :
+        check.start()
+        f_time = datetime.now()
+        os.system('clear')
+        print(f"Finished control {check.name} in {f_time - s_time} seconds")
+    except Exception as e:
+        raise Exception(msg=(e.msg if e.hasattr('msg') else f"Error executing control {check.name}: \n Error : {e}"))
+        raise Exception(f"{str(e) if str(e) else f"Error executing control {check.name}: \n Error : {e}"}")
 
 def load_config():
     try:

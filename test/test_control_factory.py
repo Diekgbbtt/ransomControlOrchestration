@@ -5,9 +5,11 @@ import sys
 import os
 from json import load as json_load
 from unittest.mock import Mock, patch
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(_file_))))
-from orchestration import controlFactory, ransomCheck, DelphixEngine
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from integrity_control import ransomCheck
 from utils import decrypt_value
+from delphix_engine import DelphixEngine
+from control import controlFactory, ControlClass
 
 
 @pytest.fixture
