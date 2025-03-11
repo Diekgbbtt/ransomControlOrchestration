@@ -1,11 +1,5 @@
 import pytest
-import db_connector
 from db_connector import DBConnector, MySQLConnector, OracleConnector, PostgreSQLConnector, MSSQLConnector, IBMDB2Connector, oracle_connect
-from oracledb import Connection as oracle_connection
-from psycopg import Connection as psycopg_connection
-from mysql import connector as mysqlconnector
-from pymssql import Connection as pymssql_connection
-from pymssql import connect as pymssql_connects
 from unittest.mock import MagicMock, patch
 
 class TestDBConnector:
@@ -39,13 +33,11 @@ class TestDBConnector:
 
     def test_postgres_connector_enter_success(self):
         with patch('db_connector.psycopg_connect') as mock_connect:
-            mock_obj = MagicMock()
-            mock_obj.cursor.return_value = None
-            mock_connect.return_value = mock_obj
+            mock_connect.return_value = MagicMock()
 
             with PostgreSQLConnector(host='host', port=5432, usr='user', pwd='pass', sid='db', tech='postgresql') as ctx:
                 mock_connect.assert_called_once_with(
-                    user='host',
+                    user='user',
                     password='pass',
                     host='host',
                     port=5432,
@@ -112,3 +104,9 @@ class TestDBConnector:
         with pytest.raises(TypeError) as exc_info:
             DBConnector.get_technology(tech)
         assert "NoneType" in str(exc_info.value)
+
+
+if __name__ == "__main__":
+    test_obj = TestDBConnector()
+    test_obj.test_oracle_connector_enter_success()
+    test_obj.test_postgres_connector_enter_success()
