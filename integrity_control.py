@@ -27,13 +27,12 @@ email : d.gobbetti@nsr.it
 
 
 # third party modules
-from requests import packages, Session, RequestException
+from requests import packages
 from smtplib import SMTP, SMTPException
-from oracledb import defaults as oracle_defaults, Error as oracle_error, connect as oracle_connect, Connection, Cursor, OperationalError, DatabaseError
 # import cx_Oracle
 from email.message import EmailMessage
 from email.errors import *
-from utils import decrypt_value, json_load, load_config, controlDatabase
+from utils import decrypt_value, load_config, controlDatabase
 
 # standard library modules
 import os
@@ -44,7 +43,7 @@ from os import remove, chdir, makedirs, path, write, close, open, O_CREAT, O_WRO
 from math import ceil
 from shutil import copy
 from datetime import datetime
-from zipfile import ZipFile, error as zip_error
+from zipfile import ZipFile
 from sqlite3 import connect, Error as sqlite_error, OperationalError, InterfaceError
 
 # local modules
@@ -57,7 +56,6 @@ from .db_connector import DBConnector
 disable_warnings(exceptions.InsecureRequestWarning)  # needed to suppress warnings
 simplefilter('ignore')
 packages.urllib3.disable_warnings()
-oracle_defaults.fetch_lobs = False
 
 
 """"
@@ -140,21 +138,38 @@ class ransomCheck(ControlClass):
     def start(self) -> None:
 
         try:
-
             self.source_engine.replication(self.replicationSpec)
             self.vault_engine.refresh(self.vdbContainerRef, self.dSourceContainer_ref)
+            """
+            TO DO :
+            self.refresh_catalogs()
+            """
 
             self.disc_engine.mask(self.jobId)
 
             self.evaluate()
-
-            if(self.discrepant_values):
+            """
+            TO DO :
+            if self.discrepant_values > config.get('max_discrepancy_values'):
+                self.send_alert()
+                self.delete_latest_snapshot_sourceengine()
+                self.stop_control()
+            """
+            if self.discrepant_values:
                 
                 self.connect_db(file_name='reports.db')
                 self.register_reports()
                 self.create_report() # zip the new discrepancies file
                 self.send_alert()
                 self.backup_report()
+
+            
+                """
+                TO DO :
+                se discrepanze minori threshold
+                self.provision_recovery_db_soruce_engine()
+                self.calculate_new_expected_values()
+                """
         
         except Exception as e:
             raise Exception(f"Error executing control. \n Error : {(str(e) if str(e) else e)}")
