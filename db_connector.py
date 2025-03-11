@@ -28,9 +28,6 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(asctime)s - %(m
 
 NUM_LINES = 1000
 
- 
-
-
 class DBConnector(ABC):
 
     def __init__(self, host: str, port: int, sid: str, tech: str, usr: str, pwd: str):

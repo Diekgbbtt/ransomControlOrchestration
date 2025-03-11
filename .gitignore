@@ -2,6 +2,7 @@ reports.db
 config.json
 .vscode/*
 __pycache__/*
+test/__pycache__/*
 .pytestcache/*
 Evaluation/*
 .gitignore
