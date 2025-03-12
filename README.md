@@ -42,7 +42,8 @@ Once installed, the next step is to fill the config.json file with the data cont
 
 Config sensitive data is expected to be encrypted with CBC cipher, AES algorithm and 32 bytes key. Encryption key should be a env variable base64 encoded.
 To encrypt sensitive data in utils a json file encryption script is provided, with customizable keys and ancryption alg, it will also generate encryption key if not present yet. 
-From the parent dir use the following command:
+From the parent dir use the following command: 
+
 `python utils.py <path_to_config_file> <key1> <key2> <key3> ...`
  
 All controls will be executed subsequently. The results will be stored in a zipped file that will be attached to the alert mail, if any dicrepancies with the expected values is found.
