@@ -11,7 +11,6 @@ Orchestration component in data control processes. Replication, virtualization, 
 - [License](#license)
 
 ## Introduction
-Provide a brief introduction to your project, explaining its purpose and key features.
 
 In the context of a production/development environment that requires an high volumen of data(sensitive or not), this component has been developed to handle the orchestration of tasks to assert the integrity, compliance of data and its structures,with customable granularity. Current implementation involve the definition of controls and its related data in a configuration file(config.json), including data indexing(database, table and column), control identification and its related informatoin needed to communicate with all the components involved in the control. 
 This orchestration is implemented in the scope of a ransomware control. This control is handled with Delphix(database virtualization and masking engine) whose efficiency is harnessed to replicate and control the integrity and compliance of data to a predefined list of values, with cell granularity, and very low time, hence the overhead in the production environment is almost in-existent like the time to alert who is responsible for the control.
