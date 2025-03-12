@@ -21,11 +21,12 @@ TO DO
 
 ## Installation
 Download from github with 
-'git clone https://github.com/Diekgbbtt/ransomControlOrchestration.git'
+
+`git clone https://github.com/Diekgbbtt/ransomControlOrchestration.git`
 
 Move to the installation folder and install required depeendencies:
 
-'python -m pip install -r requirements.txt'
+`python -m pip install -r requirements.txt`
 
 Provide step-by-step instructions on how to install and set up your project, including any dependencies or system requirements.
 
@@ -42,7 +43,7 @@ Once installed, the next step is to fill the config.json file with the data cont
 Config sensitive data is expected to be encrypted with CBC cipher, AES algorithm and 32 bytes key. Encryption key should be a env variable base64 encoded.
 To encrypt sensitive data in utils a json file encryption script is provided, with customizable keys and ancryption alg, it will also generate encryption key if not present yet. 
 From the parent dir use the following command:
-'python utils.py <path_to_config_file> <key1> <key2> <key3> ...'
+`python utils.py <path_to_config_file> <key1> <key2> <key3> ...`
  
 All controls will be executed subsequently. The results will be stored in a zipped file that will be attached to the alert mail, if any dicrepancies with the expected values is found.
 Each control process status will be reported in a sqlite database. After the data evaluation, discrepancies will be reported in the local database cell indexed, showing found and expected value, adding also the name of the zipped file where the results are written.
