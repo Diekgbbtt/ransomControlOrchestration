@@ -161,7 +161,7 @@ def controlDatabase(check):
         os.system('clear')
         print(f"Finished control {check.name} in {f_time - s_time} seconds")
     except Exception as e:
-         raise Exception(f"{str(e) if str(e) else f"Error executing control {check.name}: \n Error : {e}"}")
+        raise Exception(f"{str(e) if str(e) else f"Error executing control {check.name}: \n Error : {e}"}")
      
 if __name__ == "__main__":
     

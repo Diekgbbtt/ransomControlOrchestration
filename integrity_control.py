@@ -59,7 +59,6 @@ packages.urllib3.disable_warnings()
 
 
 """"
-
 *****************************************************************************************************************
 *   astrazione del controllo con design pattern factory method, nell'ottica di effettuare controli              *
 *   di diverso tipo utilizando sempre delphix come engine                                                      *

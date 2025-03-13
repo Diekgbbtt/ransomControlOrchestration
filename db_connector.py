@@ -1,20 +1,3 @@
-"""
-agnostic database connector
-"""
-
-"""
-connector = DBConnector.get_tech()
-connession = connector.connect(cfg_data...)
-connession.cursor.execute(query)
-"""
-"""
-connector = DBConnector.get_tech()
-with connector(cfg_data...) as connession:
-    
-    connession.execute(query)
-
-"""
-
 from oracledb import connect as oracle_connect
 from psycopg2 import connect as psycopg_connect
 from mysql.connector.connection import MySQLConnection as mysql_connect
