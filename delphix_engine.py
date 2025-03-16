@@ -15,6 +15,7 @@ class DelphixEngine:
             "Content-Type": "application/json"
         }
         self.session.headers.update(header)
+        self.snaps = list[str]
 
     def __repr__(self) -> str:
         return str(self)
@@ -114,7 +115,7 @@ class DelphixEngine:
         Returns:
             list: A list of matching dictionaries, or None if no matches are found.
     """
-    def filter_by_string(self, list_of_dicts: List[Dict], string: str, param: str) -> Optional[List[Dict]]:
+    def filter_by_string(self, list_of_dicts: list[dict], string: str, param: str) -> Optional[List[Dict]]:
 
         list = [s for s in list if s.get(param) == string]
         if len(list):
@@ -122,31 +123,6 @@ class DelphixEngine:
         else:
             print("No element found")
             return None
-    
-    
-    """
-        Retrieves the latest snapshot from a list based on a specified parameter.
-
-        This method compares the specified parameter of each item in the list and returns the one with the latest value.
-
-        Args:
-            List (list): The list of items to evaluate.
-            param (str): The parameter to compare for determining the latest item.
-
-        Returns:
-            dict: The item with the latest value for the specified parameter.
-    """
-    def get_latest_snap(self, param: str) -> Dict:
-
-        if len(List) == 1:
-            return List[0]
-        
-        latest = List[0]
-        for x in List:
-            if datetime.strptime(latest[param], '%Y-%m-%dT%H:%M:%S.%fZ') < datetime.strptime(x[param], '%Y-%m-%dT%H:%M:%S.%fZ'):
-                latest = x
-        
-        return latest
 
     """
         Creates a new session with the Delphix API.
@@ -289,13 +265,13 @@ class DelphixEngine:
         uri_snap = rf"resources/json/delphix/capacity/snapshot"
         uri_refresh = rf"resources/json/delphix/database/{vdb_ref}/refresh"
         try:
-            snaps = self.filter_by_string(self._get(uri_snap, key="result"), dSource_ref, "container")
+            self.snaps = self.filter_by_string(self._get(uri_snap, key="result"), dSource_ref, "container")
 
             data = {
                 "type": "OracleRefreshParameters",
                 "timeflowPointParameters": {
                     "type": "TimeflowPointSnapshot",
-                    "snapshot": snaps[0]['snapshot']
+                    "snapshot": self.snaps[0]['snapshot']
                 }
             }
 
@@ -343,3 +319,40 @@ class DelphixEngine:
                 raise Exception(f"error executing masking job to check values, Bad request likely. Response received {e.response}")
         except Exception as e:
                 raise Exception(f"error executing masking job to check values \n Error : {str(e) if str(e) else e}")
+
+    def delete_latest_snap(self, dSource_ref):
+        try:    
+            uri = "resources/json/delphix/snapshot/delete"
+            data = {
+                "dSource" : dSource_ref,
+                "snapshot" : self.snaps[0]['snapshot']
+            }
+            self._post(uri, data)
+        except RequestException as e:
+            raise Exception(f"Error deleting latest snapshot with id {self.snaps[0]['snapshot']} in dSource {dSource_ref} \n Error : Response received {e.response}")
+        except Exception as e:
+            raise Exception(f"Error deleting latest snapshot with id {self.snaps[0]['snapshot']} in dSource {dSource_ref} \n Error : {str(e) if str(e) else e}")
+    
+    def refresh_recovery_db(self, vdb_ref):
+        
+        uri_refresh = rf"resources/json/delphix/database/{vdb_ref}/refresh"
+        try:
+
+            data = {
+                "type": "OracleRefreshParameters",
+                "timeflowPointParameters": {
+                    "type": "TimeflowPointSnapshot",
+                    "snapshot": self.snaps[0]['snapshot']
+                }
+            }
+
+            job_id = (self._post(uri_refresh, data)).json()['job']
+            uri_jobId = rf"resources/json/delphix/job/{job_id}"
+            
+            with IncrementalBar(message=rf"Waiting for refresh of {vdb_ref} to finish", suffix='%(index)d/%(max)d [%(elapsed)d / %(eta)d / %(eta_td)s] (%(iter_value)s)', color='blue', max=100) as bar:
+                while self._get(uri_jobId, key="result")['jobState'] != "COMPLETED":
+                    bar.next(1)
+        except RequestException as e:
+                raise Exception(f"error executing vdb refershing job, Bad request likely. Response received {e.response}")
+        except Exception as e:
+                raise Exception(f"error executing vdb refershing job \n Error : {str(e) if str(e) else e}")

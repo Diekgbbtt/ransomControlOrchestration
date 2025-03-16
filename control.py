@@ -13,11 +13,11 @@ class ControlClass(ABC):
         return
 
     @abstractmethod
-    def finish(self) -> None:
+    def stop(self) -> None:
         return
 
 
-class controlFactory:
+class ControlFactory:
 
     def __init__(self, controlName : str):
         self.control = controlName

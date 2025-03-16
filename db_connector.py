@@ -1,4 +1,5 @@
-from oracledb import connect as oracle_connect
+from typing import Optional, Union
+from oracledb import connect as oracle_connect, Cursor, Connection
 from psycopg2 import connect as psycopg_connect
 from mysql.connector.connection import MySQLConnection as mysql_connect
 from pymssql import connect as pymssql_connect
@@ -38,15 +39,9 @@ class DBConnector(ABC):
     def connect(self):
         raise NotImplemented
 
-    def execute_query(self, query: str, all: bool = False, fetchsize: int = None) -> object:
-        """
-        Lancia la query definita dalla variabile sql_string.
-        :return: Risultato sottoforma di generator
-        :param: many: se deve essere effettuata una fetchmany()
-        :param: se si ha bisogno di una lista delle colonne ritornera' anche quella (to be deprecated)
-        """
+    def execute_query(self, query: str, all: bool = False, fetchsize: int = None, *variables: list) -> object:
         try:
-            self.cursor.execute(query)
+            self.cursor.execute(query, variables)
             if all:
                 return self.cursor.fetchall()
             elif fetchsize and fetchsize > 1:
@@ -62,6 +57,51 @@ class DBConnector(ABC):
             logging.error(e, exc_info=True)
         finally:
             self.cursor.close()
+
+    def execute_procedure(self, proc_name, input_args: Optional[Union[list, tuple]] = None, **kwargs) -> object:
+
+        try:
+            if input_args:
+                if 'types' in kwargs:
+                        _input = []
+                        for i in range(0, len(kwargs['types'])):
+                            _type = self.connection.gettype(kwargs['types'][i]['value'])
+                            if kwargs['types'][i]['collection']:
+                                rec_type = self.connection.gettype(kwargs['types'][i]['type']['value'])
+                                rec_collection = _type([rec_type(row) for row in input_args[i]])
+                                _input.append(rec_collection)
+                            else:
+                                record = _type(input_args[i])
+                                _input.append(record)
+                            self.cursor.callproc(proc_name, [_input + input_args[len(kwargs['types']):]])
+                else:
+                    self.cursor.callproc(proc_name, input_args)
+            else:
+                self.cursor.callproc(proc_name)
+
+        except Exception as e:
+            logging.error(e, exc_info=True)
+        finally:
+            self.cursor.close()
+    """
+    types : 
+    [
+        {
+            value : str,
+            collection : bool,
+            type : {
+                value : str,
+                collection : bool
+                .....
+                ...
+            }
+        },
+        {},
+        ...
+    ]
+    """
+
+
 
     def get_technology(tech: str) :
         

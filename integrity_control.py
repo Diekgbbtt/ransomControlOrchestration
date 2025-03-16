@@ -47,9 +47,10 @@ from zipfile import ZipFile
 from sqlite3 import connect, Error as sqlite_error, OperationalError, InterfaceError
 
 # local modules
-from delphix_engine import DelphixEngine
-from control import ControlClass, controlFactory
+from .delphix_engine import DelphixEngine
+from .control import ControlClass, ControlFactory
 from .db_connector import DBConnector
+
 
 
 
@@ -78,7 +79,7 @@ for(row : results)
 
 
     
-class ransomCheck(ControlClass):
+class RansomCheck(ControlClass):
 
     def __init__(self, control_data: dict, cfg_data: dict) -> None:
 
@@ -100,30 +101,30 @@ class ransomCheck(ControlClass):
                 raise Exception("Engines are not configured properly in config file")
             
             for key, val in cfg_source_engines.items():   
-                if key == self.sourceEngineRef:
+                if key == self.sourceEngine:
                         self.source_engine = DelphixEngine(decrypt_value(val['host']))
                         self.source_engine.create_session(val['apiVersion'])
                         self.source_engine.login_data(decrypt_value(val['usr']), decrypt_value(val['pwd']))
 
             for key, val in cfg_vault_engines.items():              
-                if key == self.vaultEngineRef:
+                if key == self.vaultEngine:
                         self.vault_engine = DelphixEngine(decrypt_value(val['host']))
                         self.vault_engine.create_session(val['apiVersion'])
                         self.vault_engine.login_data(decrypt_value(val['usr']), decrypt_value(val['pwd']))
             
             for key, val in cfg_disc_engines.items():
-                if key == self.discEngineRef:
+                if key == self.discEngine:
                         self.disc_engine = DelphixEngine(decrypt_value(val['host']))
                         self.disc_engine.login_compliance(decrypt_value(val['usr']), decrypt_value(val['pwd']))
 
             for key, val in cfg_vdbs_control.items():
-                if key == self.vdbRef:
+                if key == self.vdb:
                     if isinstance(val, dict):
-                        self.vdb = val.copy()
+                        self.vdb_target = val.copy()
+                        self.vdb_target.tech = DBConnector.get_technology(self.vdb_target.tech)
                     else:
                         raise Exception(f"Error in config data: missing or wrong formatted vdb control details")
             
-            self.mail = dict()
             if isinstance(cfg_data.get('mail'), dict):
                 self.mail = cfg_data.get('mail').copy()
             else:
@@ -138,42 +139,27 @@ class ransomCheck(ControlClass):
 
         try:
             self.source_engine.replication(self.replicationSpec)
-            self.vault_engine.refresh(self.vdbContainerRef, self.dSourceContainer_ref)
-            """
-            TO DO :
+            self.vault_engine.refresh(self.vdbContainerControl, self.dSourceContainer)
             self.refresh_catalogs()
-            """
-
             self.disc_engine.mask(self.jobId)
-
             self.evaluate()
-            """
-            TO DO :
-            if self.discrepant_values > config.get('max_discrepancy_values'):
+            if len(self.discrepant_values) > self.max_discrepancies:
                 self.send_alert()
-                self.delete_latest_snapshot_sourceengine()
-                self.stop_control()
-            """
-            if self.discrepant_values:
-                
-                self.connect_db(file_name='reports.db')
+                self.source_engine.delete_latest_snap(self.dSourceContainer)
                 self.register_reports()
-                self.create_report() # zip the new discrepancies file
-                self.send_alert()
-                self.backup_report()
-
-            
-                """
-                TO DO :
-                se discrepanze minori threshold
-                self.provision_recovery_db_soruce_engine()
-                self.calculate_new_expected_values()
-                """
-        
+                self.create_report()
+                os.exit(1)
+            else:
+                self.source_engine.refresh_recovery_db(self.vdbContainerRecovery)
+                self.refresh_expected_values()
+                if not self.discrepant_values==0:
+                    self.register_reports()
+                    self.create_report()
+                    self.backup_report()
         except Exception as e:
             raise Exception(f"Error executing control. \n Error : {(str(e) if str(e) else e)}")
 
-    def finish(self) -> None:
+    def stop(self) -> None:
 
         return
 
@@ -189,7 +175,7 @@ class ransomCheck(ControlClass):
     """
 
 
-    def connect_db(self, file_name: str = 'reports.db') -> None:
+    def connect_local_db(self, file_name: str = 'reports.db') -> None:
         try:
             self.db_conn = connect(file_name)
         except OperationalError or sqlite_error as e:
@@ -205,8 +191,8 @@ class ransomCheck(ControlClass):
             flags = O_CREAT | O_WRONLY  # Create file if it doesn't exist, open for writing
             mode = 0o666  # Permissions for the file
             fd = open(self.report_file_path, flags, mode)
-            for i in range((1, self.discrepant_values.rowcount())):
-                row = self.discrepant_values[i]
+
+            for row in self.discrepant_values:
                 write(fd, f"discrepancy revealed in database {row[0]} table {row[1]} column {row[2]}, expected value is {row[4]} while the actual value is {row[3]} \n".encode())
             close(fd)
             self.zip_report()
@@ -337,6 +323,7 @@ class ransomCheck(ControlClass):
         
         self.report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
         try:
+            self.connect_local_db(file_name='reports.db')
             cursor = self.db_conn.cursor()
         except InterfaceError or sqlite_error as e:
             if self.db_conn:
@@ -344,7 +331,7 @@ class ransomCheck(ControlClass):
                 # reverts any uncommitted changes made in the current transaction. 
                 # This restores the database to its previous state before those changes were applied
             try:
-                self.connect_db()
+                self.connect_local_db(file_name='reports.db')
                 self.register_reports()
             except sqlite_error as e:
                 raise Exception((str(e) if str(e) else f"Error getting cursor from db connection: {e}"))
@@ -383,7 +370,7 @@ class ransomCheck(ControlClass):
             if self.db_conn:
                 self.db_conn.rollback()
             try:
-                self.connect_db()
+                self.connect_local_db(file_name='reports.db')
                 self.register_reports()
             except sqlite_error as e:
                 raise Exception((str(e) if str(e) else f"Error registering reports: {e}"))
@@ -515,7 +502,41 @@ class ransomCheck(ControlClass):
             return alert
         except MessageError or MessageDefect as e:
             raise Exception(f"Error adding content to message \n Error : {e} ")
+        
+    def refresh_catalogs(self):
+        try:
+            connector = DBConnector.get_technology(self.vdb_target.tech)
+            with connector(**self.vdb_target) as db_conn:
+                for proc in self.procedures:
+                    db_conn.execute_procedure(proc)
+        except Exception as e:
+            raise Exception(f"Error refreshing catalogs by triggering execution of stored procedures \n Error : {e} ")
 
+    def refresh_expected_values(self):
+        
+        procedure_data = [
+            (row[0], row_values[0], row_values[1])
+            for row in self.retrieve_target_columns()
+                for row_values in self.retrieve_values(row)
+        ]
+        with self.vdb_target.tech(**self.vdb_target) as db_conn:
+                db_conn.execute_procedure(self.expected_proc, [procedure_data])
+
+    def retrieve_target_columns(self, results_table: str = "CHECK_2"):
+        try:
+            with self.vdb_target.tech(**self.vdb_target) as db_conn:
+                return db_conn.execute_query(f"SELECT ID, DATABASE_ID, TABLE_ID, COLUMN_ID FROM C##control_user.{results_table}", all=True)
+        except Exception as e:
+            raise Exception(f"Error retrieving target columns from results table \n Error : {e} ")
+
+    def retrieve_values(self, row):
+        try:
+            with self.vdb_target.tech(**self.vdb_target) as db_conn:
+                cv2_rs = db_conn.execute_query("SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME FROM :schema.CHECK_VIEW_2 WHERE DB_ID = ':database_id' AND TABLE_ID = ':table_id' AND COLUMN_ID = ':column_id'", True, None, "C##control_user", row[1], row[2], row[3])
+                return db_conn.execute_query("SELECT :column_name AS VALUE, COUNT(*) AS COUNT, FROM :table_schema.:table_name GROUP BY :column_name", True, None, cv2_rs[2], cv2_rs[0], cv2_rs[1], cv2_rs[2])
+        
+        except Exception as e:
+            raise Exception(f"Error retrieving values from database \n Error : {e} ")
     """
     Evaluates discrepancies in the database by executing a SQL query.
 
@@ -536,22 +557,21 @@ class ransomCheck(ControlClass):
     def evaluate(self) -> None:
         try:
             start_time = datetime.now()
-            connector = DBConnector.get_technology(self.vdb.tech)
-            with connector(**self.vdb) as db_conn:
+            with self.vdb_target.tech(**self.vdb_target) as db_conn:
 
                 self.discrepant_values =  db_conn.execute_query(
                             query="""
                                 SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO FROM \
                                                 ( SELECT DB_NAME, TABLE_NAME, COLUMN_NAME, VALUE, result, RES_ATTESO, \
                                     CASE WHEN CAST(result AS VARCHAR(200)) = RES_ATTESO THEN 1 ELSE 0 END AS EVALUATION \
-                                        FROM CHECK_BASE CB LEFT JOIN ( \
+                                        FROM C##control_user.CHECK_BASE CB LEFT JOIN ( \
                                         WITH numbers AS( \
                                             SELECT LEVEL AS n \
                                             FROM DUAL \
                                             CONNECT BY LEVEL <= 1000) \
                                             SELECT ID, DATABASE_ID, TABLE_ID, COLUMN_ID, REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, '\"(\w+|\d+)\":', 1, n), '(\w+|\d+)') as chiavi, \
                                                 REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, ':\"(\w+|\d+)\"[,}]', 1, n), '(\w+|\d+)') as result \
-                                                FROM CHECK_2, numbers \
+                                                FROM C##control_user.CHECK_2, numbers \
                                                 WHERE  n <= REGEXP_COUNT(RESULT, '\"(\w+|\d+)\":')  \
                                                 ORDER BY ID, n ) CR ON CB.VALUE = CAST(CR.chiavi AS VARCHAR(200)) AND CB.ID_CHECK = CR.ID \
                                                                                 JOIN CHECK_VIEW_2 CV2 ON CB.ID_CHECK = CV2.ID) WHERE EVALUATION = 0")""",
@@ -570,7 +590,7 @@ if __name__ == "__main__":
     cfg_dict = load_config()
     for ctrl in cfg_dict.get('Controls'):
             try:
-                ctrl_factory = controlFactory(controlClass=ctrl.get('name'))
+                ctrl_factory = ControlFactory(controlClass=ctrl.get('name'))
                 rcheck = ctrl_factory.instance_control(control_data=ctrl, cfg_data=cfg_dict)
                 controlDatabase(rcheck)
             except Exception as e:
