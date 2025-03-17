@@ -514,8 +514,7 @@ class RansomCheck(ControlClass):
         
     def update_catalogs(self):
         try:
-            connector = DBConnector.get_technology(self.vdb_target.tech)
-            with connector(**self.vdb_target) as db_conn:
+            with self.vdb_target.tech(**self.vdb_target) as db_conn:
                 for proc in self.procedures:
                     db_conn.execute_procedure(proc)
         except Exception as e:
