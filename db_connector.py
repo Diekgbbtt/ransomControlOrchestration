@@ -23,8 +23,7 @@ class DBConnector(ABC):
         self.tech = tech
         self.connection = None
         self.cursor = None
-    
-    
+
     def __enter__(self):
         try:
             self.connection = self.connect()
@@ -83,24 +82,6 @@ class DBConnector(ABC):
             logging.error(e, exc_info=True)
         finally:
             self.cursor.close()
-    """
-    types : 
-    [
-        {
-            value : str,
-            collection : bool,
-            type : {
-                value : str,
-                collection : bool
-                .....
-                ...
-            }
-        },
-        {},
-        ...
-    ]
-    """
-
 
 
     def get_technology(tech: str) :

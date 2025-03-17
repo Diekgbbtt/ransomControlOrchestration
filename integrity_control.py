@@ -136,25 +136,26 @@ class RansomCheck(ControlClass):
             raise Exception(f"Error initializing engines. \n Error : {str(e) if str(e) else e}")
         
     def start(self) -> None:
-
         try:
             self.source_engine.replication(self.replicationSpec)
-            self.vault_engine.refresh(self.vdbContainerControl, self.dSourceContainer)
-            self.refresh_catalogs()
+            self.vault_engine.refresh_control_vdb(self.vdbContainerControl, self.dSourceContainer)
+            self.update_catalogs()
             self.disc_engine.mask(self.jobId)
             self.evaluate()
             if len(self.discrepant_values) > self.max_discrepancies:
+                self.register_report()
+                self.create_report()
                 self.send_alert()
                 self.source_engine.delete_latest_snap(self.dSourceContainer)
-                self.register_reports()
-                self.create_report()
+                self.register_discrepancies()
                 os.exit(1)
             else:
                 self.source_engine.refresh_recovery_db(self.vdbContainerRecovery)
-                self.refresh_expected_values()
-                if not self.discrepant_values==0:
-                    self.register_reports()
+                self.update_expected_values()
+                if not len(self.discrepant_values)==0:
+                    self.register_report()
                     self.create_report()
+                    self.register_discrepancies()
                     self.backup_report()
         except Exception as e:
             raise Exception(f"Error executing control. \n Error : {(str(e) if str(e) else e)}")
@@ -191,7 +192,6 @@ class RansomCheck(ControlClass):
             flags = O_CREAT | O_WRONLY  # Create file if it doesn't exist, open for writing
             mode = 0o666  # Permissions for the file
             fd = open(self.report_file_path, flags, mode)
-
             for row in self.discrepant_values:
                 write(fd, f"discrepancy revealed in database {row[0]} table {row[1]} column {row[2]}, expected value is {row[4]} while the actual value is {row[3]} \n".encode())
             close(fd)
@@ -319,7 +319,7 @@ class RansomCheck(ControlClass):
         Returns:
             None
     """
-    def register_reports(self) -> None:
+    def register_report(self) -> None:
         
         self.report_file_name = f"discrepancies_{datetime.now().strftime('%d_%m_%Y-%H_%M_%S')}"
         try:
@@ -332,7 +332,7 @@ class RansomCheck(ControlClass):
                 # This restores the database to its previous state before those changes were applied
             try:
                 self.connect_local_db(file_name='reports.db')
-                self.register_reports()
+                self.register_report()
             except sqlite_error as e:
                 raise Exception((str(e) if str(e) else f"Error getting cursor from db connection: {e}"))
 
@@ -349,11 +349,22 @@ class RansomCheck(ControlClass):
                 'created_at': datetime.now().strftime('%d_%m_%Y-%H_%M_%S'),
             })
 
-            report_id = cursor.lastrowid
-            
+            self.report_id = cursor.lastrowid
+        
+        except sqlite_error as e:
+            if self.db_conn:
+                self.db_conn.rollback()
+            try:
+                self.connect_local_db(file_name='reports.db')
+                self.register_report()
+            except sqlite_error as e:
+                raise Exception((str(e) if str(e) else f"Error registering reports: {e}"))
+
+    def register_discrepancies(self):
+        try:
             # add single discrepancies revealed, each with reference to their report
             for row in self.discrepant_values:
-                cursor.execute('''
+                self.db_conn.cursor.execute('''
                 INSERT INTO discrepancies (db, "table", "column", value, discrepancy, report_id)
                 VALUES (:db, :table, :column, :value, :discrepancy, :report_id)
                 ''', {
@@ -362,7 +373,7 @@ class RansomCheck(ControlClass):
                     'column': row[2],
                     'value': row[3],
                     'discrepancy': f'effettivo {row[3]} != atteso {row[4]}',
-                    'report_id': report_id
+                    'report_id': self.report_id
                 })
 
             self.db_conn.commit()
@@ -371,7 +382,7 @@ class RansomCheck(ControlClass):
                 self.db_conn.rollback()
             try:
                 self.connect_local_db(file_name='reports.db')
-                self.register_reports()
+                self.register_report()
             except sqlite_error as e:
                 raise Exception((str(e) if str(e) else f"Error registering reports: {e}"))
             
@@ -436,7 +447,6 @@ class RansomCheck(ControlClass):
     def send_alert(self) -> None:
         try:
             with SMTP(decrypt_value(self.mail.smtpServer)) as mail_server:
-                # Start TLS for security
                 mail_server.starttls()
                 mail_server.login(decrypt_value(self.mail.usr), decrypt_value(self.mail.pwd))
                 
@@ -444,7 +454,6 @@ class RansomCheck(ControlClass):
                     content = self.add_content(report)  # Prepare the email content with the report attachment
                     mail_server.send_message(content, decrypt_value(self.mail.usr), self.mailReceivers)  # Send the email
                     
-                    # Update the report status in the database
                     if len(self.reports_zip_path) == 1:
                         self.update_report_status(report[:-4], f"REPORT SENT")
                     elif len(self.reports_zip_path) > 1:
@@ -503,7 +512,7 @@ class RansomCheck(ControlClass):
         except MessageError or MessageDefect as e:
             raise Exception(f"Error adding content to message \n Error : {e} ")
         
-    def refresh_catalogs(self):
+    def update_catalogs(self):
         try:
             connector = DBConnector.get_technology(self.vdb_target.tech)
             with connector(**self.vdb_target) as db_conn:
@@ -512,15 +521,16 @@ class RansomCheck(ControlClass):
         except Exception as e:
             raise Exception(f"Error refreshing catalogs by triggering execution of stored procedures \n Error : {e} ")
 
-    def refresh_expected_values(self):
+    def update_expected_values(self):
         
         procedure_data = [
             (row[0], row_values[0], row_values[1])
             for row in self.retrieve_target_columns()
                 for row_values in self.retrieve_values(row)
         ]
+        types = [{"value" : "CheckBaseTableType", "collection": True, "type" : {"value" : "CheckBaseRecType", "collection" : False} }]
         with self.vdb_target.tech(**self.vdb_target) as db_conn:
-                db_conn.execute_procedure(self.expected_proc, [procedure_data])
+                db_conn.execute_procedure(self.expected_proc, [procedure_data], types=types)
 
     def retrieve_target_columns(self, results_table: str = "CHECK_2"):
         try:
@@ -568,7 +578,7 @@ class RansomCheck(ControlClass):
                                         WITH numbers AS( \
                                             SELECT LEVEL AS n \
                                             FROM DUAL \
-                                            CONNECT BY LEVEL <= 1000) \
+                                            CONNECT BY LEVEL <= 100000) \
                                             SELECT ID, DATABASE_ID, TABLE_ID, COLUMN_ID, REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, '\"(\w+|\d+)\":', 1, n), '(\w+|\d+)') as chiavi, \
                                                 REGEXP_SUBSTR(REGEXP_SUBSTR(RESULT, ':\"(\w+|\d+)\"[,}]', 1, n), '(\w+|\d+)') as result \
                                                 FROM C##control_user.CHECK_2, numbers \

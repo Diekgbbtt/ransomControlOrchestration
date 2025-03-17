@@ -15,7 +15,6 @@ class DelphixEngine:
             "Content-Type": "application/json"
         }
         self.session.headers.update(header)
-        self.snaps = list[str]
 
     def __repr__(self) -> str:
         return str(self)
@@ -260,7 +259,7 @@ class DelphixEngine:
     Returns:
         None
     """
-    def refresh(self, vdb_ref: str, dSource_ref: str) -> None:
+    def refresh_control_vdb(self, vdb_ref: str, dSource_ref: str) -> None:
 
         uri_snap = rf"resources/json/delphix/capacity/snapshot"
         uri_refresh = rf"resources/json/delphix/database/{vdb_ref}/refresh"
