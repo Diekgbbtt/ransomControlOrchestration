@@ -12,12 +12,9 @@ Orchestration component in data control processes. Replication, virtualization, 
 
 ## Introduction
 
-In the context of a production/development environment that requires an high volumen of data(sensitive or not), this component has been developed to handle the orchestration of tasks to assert the integrity, compliance of data and its structures,with customable granularity. Current implementation involve the definition of controls and its related data in a configuration file(config.json), including data indexing(database, table and column), control identification and its related informatoin needed to communicate with all the components involved in the control. 
-This orchestration is implemented in the scope of a ransomware control. This control is handled with Delphix(database virtualization and masking engine) whose efficiency is harnessed to replicate and control the integrity and compliance of data to a predefined list of values, with cell granularity, and very low time, hence the overhead in the production environment is almost in-existent like the time to alert who is responsible for the control.
+In the context of a production/development environment that requires an high volumen of data(sensitive or not), this component has been developed to handle the orchestration of tasks to assert the integrity, compliance of data and its structures, with customable granularity. Current implementation involve the definition of controls and its related data in a configuration file(config.json), including data indexing(database, table and column), control identification and its related informatoin needed to communicate with all the components involved in the control. 
+This component plays the role of orchestrator in a ransomware control process on relational databases. The control leverages Delphix(database virtualization and masking SaaS) whose capabilties are harnessed to replicate data and control its integrity and compliance predefined list of values, with table cell granularity, and best-in-class total time, hence the overhead in the production environment is almost in-existent, whereby the time to alert who is responsible for the control.
 This control can be replicated in any other kind of data control scenario.
-
-## Features
-TO DO
 
 ## Installation
 Download from github with 
@@ -27,8 +24,6 @@ Download from github with
 Move to the installation folder and install required depeendencies:
 
 `python -m pip install -r requirements.txt`
-
-Provide step-by-step instructions on how to install and set up your project, including any dependencies or system requirements.
 
 ## Usage
 Once installed, the next step is to fill the config.json file with the data control information. This file is in json format and has the following structure:
