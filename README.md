@@ -13,7 +13,7 @@ Orchestration component in data control processes. Replication, virtualization, 
 ## Introduction
 
 In the context of a production/development environment that requires an high volume of data(sensitive or not), this component has been developed to handle the orchestration of tasks to assert the integrity, compliance of data and its structures, with customable granularity. Current implementation involve the definition of controls and its related data in a configuration file(config.json), including data indexing(database, table and column), control identification and its related informatoin needed to communicate with all the components involved in the control. 
-This component play the role of orchestrator within a ransomware control process. The control leverages Delphix(database virtualization and masking SaaS) capabilities to replicate data and control its integrity and compliance to a predefined list of values, with cell granularity, and very low time compared to industry benchmarks. Hence the overhead in the production environment is almost in-existent, whereby the time to alert who is responsible for the control.
+This component play the role of orchestrator within a ransomware control process. The control leverages Delphix(database virtualization and masking SaaS) capabilities to replicate data and control its integrity and compliance to a predefined list of values, with cell granularity, and benchmarks revealed a very short time. Hence the overhead in the production environment is almost in-existent, whereby the time to alert who is responsible for the control.
 This control can be replicated in any other kind of data control scenario.
 
 ## Installation
@@ -36,7 +36,7 @@ Once installed, the next step is to fill the config.json file with the data cont
     - Controls : list of controls to be executed. Each control includes peculiar data, including identifications of machines involved in the control and information required by the implementation logic. 
 
 Config sensitive data is expected to be encrypted with CBC cipher, AES algorithm and 32 bytes key. Encryption key should be a env variable base64 encoded.
-To encrypt sensitive data in utils a json file encryption script is provided, with customizable keys and ancryption alg, it will also generate encryption key if not present yet. 
+To encrypt sensitive data in utils a json file encryption script is provided, with customizable keys and encryption alg, it will also generate encryption key if not present yet. 
 From the parent dir use the following command: 
 
 `python utils.py <path_to_config_file> <key1> <key2> <key3> ...`
