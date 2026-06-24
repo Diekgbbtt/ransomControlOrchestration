@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/862385720.svg)](https://doi.org/10.5281/zenodo.20834322)
+
 # Data Stream Control Orchestration
 
 Orchestration component in data control processes. Replication, virtualization, control, alert and response of data and database environments
