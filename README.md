@@ -1,4 +1,4 @@
-[![DOI](https://zenodo.org/badge/862385720.svg)](https://zenodo.org/records/17561370)
+[![DOI](https://zenodo.org/badge/17561370.svg)](https://zenodo.org/records/17561370)
 
 # Data Stream Control Orchestration
 
